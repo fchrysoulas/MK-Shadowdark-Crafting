@@ -1,0 +1,91 @@
+<section class="mk-sdc-book-manager-panel">
+  <header class="mk-sdc-book-manager-header">
+    <div>
+      <h2>{{localize "MKSDC.RecipeBooks.ManagerTitle"}}</h2>
+      <p class="mk-sdc-muted">{{localize "MKSDC.RecipeBooks.ManagerHint"}}</p>
+    </div>
+    <div class="mk-sdc-book-manager-actions">
+      <button type="button" data-action="save-current">
+        <i class="fas fa-book-bookmark"></i>
+        {{localize "MKSDC.Buttons.SaveBook"}}
+      </button>
+      <button type="button" data-action="export-book-dialog">
+        <i class="fas fa-file-export"></i>
+        {{localize "MKSDC.Buttons.ExportBook"}}
+      </button>
+      <button type="button" data-action="import-file">
+        <i class="fas fa-file-import"></i>
+        {{localize "MKSDC.Buttons.ImportBook"}}
+      </button>
+    </div>
+  </header>
+
+  <div class="mk-sdc-book-current-world">
+    <i class="fas fa-globe"></i>
+    <span>{{localize "MKSDC.RecipeBooks.ActiveRecipes"}}</span>
+    <strong>{{currentWorldCount}}</strong>
+  </div>
+
+  {{#if hasLegacyItems}}
+    <div class="mk-sdc-book-current-world mk-sdc-legacy-warning">
+      <i class="fas fa-triangle-exclamation"></i>
+      <span>{{legacyItemCount}} {{localize "MKSDC.RecipeBooks.LegacyItemsFound"}}</span>
+      <button type="button" data-action="migrate-legacy">
+        <i class="fas fa-right-left"></i>
+        {{localize "MKSDC.Buttons.MigrateRecipes"}}
+      </button>
+    </div>
+  {{/if}}
+
+  {{#unless hasBooks}}
+    <div class="mk-sdc-empty">
+      <i class="fas fa-book-open"></i>
+      <p>{{localize "MKSDC.RecipeBooks.NoSavedBooks"}}</p>
+    </div>
+  {{/unless}}
+
+  {{#if hasBooks}}
+    <ol class="mk-sdc-book-list">
+      {{#each books as |book|}}
+        <li class="mk-sdc-book-row" data-book-id="{{book.id}}">
+          <div class="mk-sdc-book-icon">
+            <i class="fas fa-book"></i>
+          </div>
+          <div class="mk-sdc-book-details">
+            <h3>{{book.name}}</h3>
+            <p>
+              <span>{{book.count}} {{localize "MKSDC.RecipeBooks.Recipes"}}</span>
+              {{#if book.active}}
+                <span class="mk-sdc-book-active-label">{{localize "MKSDC.RecipeBooks.Active"}}</span>
+              {{/if}}
+              {{#if book.updatedAt}}
+                <span>{{localize "MKSDC.RecipeBooks.Updated"}} {{book.updatedAt}}</span>
+              {{/if}}
+            </p>
+          </div>
+          <div class="mk-sdc-book-row-actions">
+            <label class="mk-sdc-book-active-toggle" title="{{localize 'MKSDC.RecipeBooks.ActiveHint'}}">
+              <input type="checkbox" data-action="toggle-active" data-book-id="{{book.id}}" {{#if book.active}}checked{{/if}}>
+              <span>{{localize "MKSDC.RecipeBooks.Active"}}</span>
+            </label>
+            <button type="button" title="{{localize 'MKSDC.Buttons.ApplyBook'}}" data-action="apply-book" data-book-id="{{book.id}}">
+              <i class="fas fa-download"></i>
+            </button>
+            <button type="button" title="{{localize 'MKSDC.Buttons.ExportBook'}}" data-action="export-book" data-book-id="{{book.id}}">
+              <i class="fas fa-file-export"></i>
+            </button>
+            <button type="button" title="{{localize 'MKSDC.Buttons.Rename'}}" data-action="rename-book" data-book-id="{{book.id}}">
+              <i class="fas fa-i-cursor"></i>
+            </button>
+            <button type="button" title="{{localize 'MKSDC.Buttons.UpdateBook'}}" data-action="update-book" data-book-id="{{book.id}}">
+              <i class="fas fa-arrows-rotate"></i>
+            </button>
+            <button type="button" title="{{localize 'MKSDC.Buttons.Delete'}}" data-action="delete-book" data-book-id="{{book.id}}">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </li>
+      {{/each}}
+    </ol>
+  {{/if}}
+</section>

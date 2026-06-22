@@ -1,0 +1,72 @@
+<div class="mk-sdc-chat-card {{outcome}}">
+  <header class="mk-sdc-chat-header">
+    <img src="{{recipeItem.img}}" alt="{{recipeItem.name}}">
+    <div>
+      <h3>{{recipeItem.name}}</h3>
+      <p>{{actor.name}} - {{outcomeLabel}}</p>
+    </div>
+  </header>
+
+  {{#if rollHtml}}
+    <div class="mk-sdc-roll-box">
+      {{{rollHtml}}}
+    </div>
+    <div class="mk-sdc-chat-summary">
+      <span>DC {{dc}}</span>
+      <span>{{mkSdcAbilityLabel rollAbility}}</span>
+      <span>{{rollModeLabel}}</span>
+      <span>d20: {{d20}}</span>
+    </div>
+  {{/if}}
+
+  {{#if createdItem}}
+    <p class="mk-sdc-chat-success"><i class="fas fa-circle-check"></i> {{localize "MKSDC.Chat.Created"}}: <strong>{{createdItem.name}}</strong> x{{recipe.outputQty}}</p>
+  {{/if}}
+
+  {{#if deconstructedItem}}
+    <p class="mk-sdc-chat-success"><i class="fas fa-recycle"></i> {{localize "MKSDC.Chat.Deconstructed"}}: <strong>{{deconstructedItem.name}}</strong> x{{deconstructedItem.qty}}</p>
+  {{/if}}
+
+  {{#if refunded.length}}
+    <div class="mk-sdc-chat-list">
+      <strong>{{localize "MKSDC.Chat.Recovered"}}</strong>
+      <ul>
+        {{#each refunded as |entry|}}
+          <li>{{entry.name}} x{{entry.qty}}{{#if entry.actorName}} <small>{{localize "MKSDC.Chat.To"}} {{entry.actorName}}</small>{{/if}}</li>
+        {{/each}}
+      </ul>
+    </div>
+  {{/if}}
+
+  {{#if consumed.length}}
+    <div class="mk-sdc-chat-list">
+      <strong>{{localize "MKSDC.Chat.Consumed"}}</strong>
+      <ul>
+        {{#each consumed as |entry|}}
+          <li>{{entry.name}} x{{#if (mkSdcEq entry.kind "gold")}}{{entry.amount}}{{else}}{{entry.qty}}{{/if}}{{#if entry.actorName}} <small>{{localize "MKSDC.Chat.From"}} {{entry.actorName}}</small>{{/if}}</li>
+        {{/each}}
+      </ul>
+    </div>
+  {{/if}}
+
+  {{#if requirements.missing.length}}
+    <div class="mk-sdc-chat-list missing">
+      <strong>{{localize "MKSDC.Chat.Missing"}}</strong>
+      <ul>
+        {{#each requirements.missing as |entry|}}
+          <li>{{entry}}</li>
+        {{/each}}
+      </ul>
+    </div>
+  {{/if}}
+
+  {{#if notes.length}}
+    <div class="mk-sdc-chat-notes">
+      <ul>
+        {{#each notes as |note|}}
+          <li>{{note}}</li>
+        {{/each}}
+      </ul>
+    </div>
+  {{/if}}
+</div>

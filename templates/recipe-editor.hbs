@@ -1,0 +1,208 @@
+<form class="mk-sdc-form" autocomplete="off">
+  <section class="mk-sdc-editor-section">
+    <h2><i class="fas fa-box-open"></i> {{localize "MKSDC.Editor.OutputSection"}}</h2>
+
+    <div class="mk-sdc-drop-zone mk-sdc-output-drop" data-drop-target="output">
+      <img src="{{recipe.outputImg}}" data-output-img alt="{{recipe.outputName}}">
+      <div>
+        <h3 data-output-title>{{recipe.outputName}}</h3>
+        <p data-output-subtitle>
+          {{#if recipe.outputUuid}}
+            {{recipe.outputType}} - {{recipe.outputUuid}}
+          {{else}}
+            {{localize "MKSDC.Editor.OutputDropHint"}}
+          {{/if}}
+        </p>
+      </div>
+      <button type="button" data-action="clear-output"><i class="fas fa-xmark"></i> {{localize "MKSDC.Buttons.Clear"}}</button>
+    </div>
+
+    <input type="hidden" name="recipe.outputUuid" value="{{recipe.outputUuid}}">
+    <input type="hidden" name="recipe.outputImg" value="{{recipe.outputImg}}">
+    <textarea name="recipe.outputItemData" class="mk-sdc-hidden-json">{{mkSdcJson recipe.outputItemData}}</textarea>
+
+    <div class="mk-sdc-three-col">
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.Name"}}</label>
+        <input type="text" name="recipe.outputName" value="{{recipe.outputName}}">
+      </div>
+
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.Type"}}</label>
+        <select name="recipe.outputType">
+          {{#each itemTypes as |type|}}
+            <option value="{{type}}" {{#if (mkSdcEq ../recipe.outputType type)}}selected{{/if}}>{{type}}</option>
+          {{/each}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.Quantity"}}</label>
+        <input type="number" name="recipe.outputQty" value="{{recipe.outputQty}}" min="1" step="1">
+      </div>
+    </div>
+  </section>
+
+  <section class="mk-sdc-editor-section">
+    <h2><i class="fas fa-hammer"></i> {{localize "MKSDC.Editor.RecipeSection"}}</h2>
+
+    <input type="hidden" name="recipe.id" value="{{recipe.id}}">
+    <input type="hidden" name="recipe.bookId" value="{{recipe.bookId}}">
+    <input type="hidden" name="recipe.craftType" value="{{recipe.craftType}}">
+    <input type="hidden" name="recipe.deconstructEnabled" value="true">
+
+    <div class="mk-sdc-two-col">
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.DC"}}</label>
+        <input type="number" name="recipe.dc" value="{{recipe.dc}}" min="1" step="1">
+      </div>
+
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.Category"}}</label>
+        <input type="text" name="recipe.category" value="{{recipe.category}}" placeholder="{{recipe.outputType}}">
+        <p class="hint">{{localize "MKSDC.Editor.CategoryHint"}}</p>
+      </div>
+
+      <div class="form-group stacked">
+        <label>{{localize "MKSDC.Editor.Abilities"}}</label>
+        <div class="mk-sdc-ability-checklist">
+          {{#each abilityOptions as |ability|}}
+            <label class="mk-sdc-ability-check">
+              <input type="checkbox" name="recipe.abilities.{{ability.value}}" {{#if ability.checked}}checked{{/if}}>
+              <span>{{ability.label}}</span>
+            </label>
+          {{/each}}
+        </div>
+        <p class="hint">{{localize "MKSDC.Editor.AbilitiesHint"}}</p>
+      </div>
+    </div>
+
+    <div class="mk-sdc-two-col">
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.Time"}}</label>
+        <input type="text" name="recipe.time" value="{{recipe.time}}">
+      </div>
+
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.GoldCost"}}</label>
+        <input type="number" name="recipe.goldCost" value="{{recipe.goldCost}}" min="0" step="1">
+      </div>
+    </div>
+
+    <div class="mk-sdc-two-col">
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.ToolRequired"}}</label>
+        <input type="text" name="recipe.toolRequired" value="{{recipe.toolRequired}}">
+      </div>
+
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.StationRequired"}}</label>
+        <input type="text" name="recipe.stationRequired" value="{{recipe.stationRequired}}">
+      </div>
+    </div>
+
+    <div class="form-group stacked">
+      <label>{{localize "MKSDC.Editor.Materials"}}</label>
+      <div class="mk-sdc-drop-zone mk-sdc-material-drop" data-drop-target="materials">
+        <i class="fas fa-hand-sparkles"></i>
+        <span>{{localize "MKSDC.Editor.MaterialDropHint"}}</span>
+        <button type="button" data-action="add-material"><i class="fas fa-plus"></i> {{localize "MKSDC.Buttons.AddRequirement"}}</button>
+      </div>
+
+      <ul class="mk-sdc-material-editor-list" data-material-list>
+        {{#each recipe.materialGroups as |group groupIndex|}}
+          <li class="mk-sdc-material-group-row" data-material-group data-group-index="{{groupIndex}}">
+            <div class="mk-sdc-material-group-header">
+              <strong>{{localize "MKSDC.Editor.Requirement"}} {{mkSdcAdd groupIndex 1}}</strong>
+              <span>{{localize "MKSDC.Editor.SubstitutesHintShort"}}</span>
+              <button type="button" class="mk-sdc-icon-button" data-action="remove-material-group" title="{{localize 'MKSDC.Buttons.Remove'}}">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+
+            <ul class="mk-sdc-material-alternative-list" data-alternative-list>
+              {{#each group.alternatives as |material altIndex|}}
+                <li class="mk-sdc-material-choice" data-material-choice data-alt-index="{{altIndex}}">
+                  <img src="{{material.img}}" alt="{{material.name}}">
+                  <div class="mk-sdc-material-main">
+                    <input type="text" name="materialGroups.{{../groupIndex}}.alternatives.{{altIndex}}.name" value="{{material.name}}" placeholder="{{localize 'MKSDC.Editor.MaterialName'}}">
+                    <input type="hidden" name="materialGroups.{{../groupIndex}}.alternatives.{{altIndex}}.uuid" value="{{material.uuid}}">
+                    <input type="hidden" name="materialGroups.{{../groupIndex}}.alternatives.{{altIndex}}.type" value="{{material.type}}">
+                    <input type="hidden" name="materialGroups.{{../groupIndex}}.alternatives.{{altIndex}}.img" value="{{material.img}}">
+                    <div class="mk-sdc-material-meta">
+                      {{#if material.type}}{{material.type}}{{else}}{{localize "MKSDC.Editor.ManualMaterial"}}{{/if}}
+                    </div>
+                  </div>
+                  <div class="mk-sdc-material-qty">
+                    <label>{{localize "MKSDC.Editor.Quantity"}}</label>
+                    <input type="number" name="materialGroups.{{../groupIndex}}.alternatives.{{altIndex}}.qty" value="{{material.qty}}" min="1" step="1">
+                  </div>
+                  <button type="button" class="mk-sdc-icon-button" data-action="remove-material-choice" title="{{localize 'MKSDC.Buttons.Remove'}}">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </li>
+              {{/each}}
+            </ul>
+
+            <div class="mk-sdc-drop-zone mk-sdc-material-alternative-drop" data-drop-target="material-group">
+              <i class="fas fa-plus"></i>
+              <span>{{localize "MKSDC.Editor.AlternativeDropHint"}}</span>
+              <button type="button" data-action="add-material-choice"><i class="fas fa-plus"></i> {{localize "MKSDC.Buttons.AddSubstitute"}}</button>
+            </div>
+          </li>
+        {{/each}}
+      </ul>
+
+      <p class="hint" data-material-empty {{#if hasMaterials}}style="display:none;"{{/if}}>{{localize "MKSDC.Editor.NoMaterials"}}</p>
+      <p class="hint">{{localize "MKSDC.Editor.MaterialsHint"}}</p>
+    </div>
+
+    <div class="form-group stacked mk-sdc-deconstruct-editor-section">
+      <label><i class="fas fa-recycle"></i> {{localize "MKSDC.Editor.DeconstructMaterials"}}</label>
+      <div class="mk-sdc-drop-zone mk-sdc-material-drop" data-drop-target="deconstruct-materials">
+        <i class="fas fa-recycle"></i>
+        <span>{{localize "MKSDC.Editor.DeconstructDropHint"}}</span>
+        <button type="button" data-action="add-deconstruct-material"><i class="fas fa-plus"></i> {{localize "MKSDC.Buttons.AddMaterial"}}</button>
+      </div>
+
+      <ul class="mk-sdc-material-editor-list" data-deconstruct-material-list>
+        {{#each recipe.deconstructMaterials as |material materialIndex|}}
+          <li class="mk-sdc-material-choice mk-sdc-deconstruct-material-row" data-deconstruct-material-row data-deconstruct-material-index="{{materialIndex}}">
+            <img src="{{material.img}}" alt="{{material.name}}">
+            <div class="mk-sdc-material-main">
+              <input type="text" name="deconstructMaterials.{{materialIndex}}.name" value="{{material.name}}" placeholder="{{localize 'MKSDC.Editor.MaterialName'}}">
+              <input type="hidden" name="deconstructMaterials.{{materialIndex}}.uuid" value="{{material.uuid}}">
+              <input type="hidden" name="deconstructMaterials.{{materialIndex}}.type" value="{{material.type}}">
+              <input type="hidden" name="deconstructMaterials.{{materialIndex}}.img" value="{{material.img}}">
+              <div class="mk-sdc-material-meta">
+                {{#if material.type}}{{material.type}}{{else}}{{localize "MKSDC.Editor.ManualMaterial"}}{{/if}}
+              </div>
+            </div>
+            <div class="mk-sdc-material-qty">
+              <label>{{localize "MKSDC.Editor.Quantity"}}</label>
+              <input type="number" name="deconstructMaterials.{{materialIndex}}.qty" value="{{material.qty}}" min="1" step="1">
+            </div>
+            <button type="button" class="mk-sdc-icon-button" data-action="remove-deconstruct-material" title="{{localize 'MKSDC.Buttons.Remove'}}">
+              <i class="fas fa-trash"></i>
+            </button>
+          </li>
+        {{/each}}
+      </ul>
+
+      <p class="hint" data-deconstruct-material-empty {{#if hasDeconstructMaterials}}style="display:none;"{{/if}}>{{localize "MKSDC.Editor.NoDeconstructMaterials"}}</p>
+      <p class="hint">{{localize "MKSDC.Editor.DeconstructMaterialsHint"}}</p>
+    </div>
+
+    <div class="form-group stacked">
+      <label>{{localize "MKSDC.Editor.Notes"}}</label>
+      <textarea name="recipe.notes" rows="4">{{recipe.notes}}</textarea>
+    </div>
+  </section>
+
+  <footer class="sheet-footer flexrow mk-sdc-editor-footer">
+    {{#if canDelete}}
+      <button type="button" class="mk-sdc-danger-button" data-action="delete-recipe"><i class="fas fa-trash"></i> {{localize "MKSDC.Buttons.Delete"}}</button>
+    {{/if}}
+    <button type="submit"><i class="fas fa-save"></i> {{localize "MKSDC.Buttons.Save"}}</button>
+  </footer>
+</form>

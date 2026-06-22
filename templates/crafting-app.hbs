@@ -1,0 +1,455 @@
+<section class="mk-sdc-panel">
+  {{#unless hasActor}}
+    <div class="mk-sdc-empty">
+      <i class="fas fa-user-slash"></i>
+      <p>{{localize "MKSDC.App.NoActor"}}</p>
+    </div>
+  {{/unless}}
+
+  {{#if hasActor}}
+    <header class="mk-sdc-app-header mk-sdc-app-header--compact">
+      <img class="mk-sdc-actor-img mk-sdc-actor-img--compact" src="{{actorImg}}" alt="{{actorName}}">
+      <div class="mk-sdc-header-copy">
+        <h2>{{localize "MKSDC.App.Title"}}</h2>
+        <p>{{actorName}}</p>
+      </div>
+      <div class="mk-sdc-header-actions">
+        <button
+          type="button"
+          class="mk-sdc-header-mode-button {{#if isCraftMode}}active{{/if}}"
+          data-action="set-mode"
+          data-mode="craft"
+          title="{{localize 'MKSDC.Buttons.Craft'}}"
+          aria-label="{{localize 'MKSDC.Buttons.Craft'}}"
+        >
+          <i class="fas fa-hammer"></i>
+        </button>
+        <button
+          type="button"
+          class="mk-sdc-header-mode-button {{#if isDeconstructMode}}active{{/if}}"
+          data-action="set-mode"
+          data-mode="deconstruct"
+          title="{{localize 'MKSDC.Deconstruct.Action'}}"
+          aria-label="{{localize 'MKSDC.Deconstruct.Action'}}"
+        >
+          <i class="fas fa-recycle"></i>
+        </button>
+        <button type="button" data-action="refresh" title="{{localize 'MKSDC.Buttons.Refresh'}}" aria-label="{{localize 'MKSDC.Buttons.Refresh'}}"><i class="fas fa-sync"></i></button>
+        {{#if isGM}}
+          <button type="button" data-action="manage-recipe-books" title="{{localize 'MKSDC.Buttons.ManageBooks'}}" aria-label="{{localize 'MKSDC.Buttons.ManageBooks'}}"><i class="fas fa-book-open"></i></button>
+          <button type="button" data-action="create-recipe" title="{{localize 'MKSDC.Buttons.CreateRecipe'}}" aria-label="{{localize 'MKSDC.Buttons.CreateRecipe'}}"><i class="fas fa-plus"></i></button>
+        {{/if}}
+      </div>
+    </header>
+
+    {{#if isCraftMode}}
+
+    {{#unless hasRecipes}}
+      <div class="mk-sdc-empty">
+        <i class="fas fa-scroll"></i>
+        <p>{{localize "MKSDC.App.NoRecipes"}}</p>
+        {{#if isGM}}
+          <p class="mk-sdc-muted">{{localize "MKSDC.App.NoRecipesGMHint"}}</p>
+        {{/if}}
+      </div>
+    {{/unless}}
+
+    {{#if hasRecipes}}
+      <div class="mk-sdc-crafting-layout {{#if isMasterDetail}}mk-sdc-crafting-layout--detail{{else}}mk-sdc-crafting-layout--list{{/if}}">
+        <aside class="mk-sdc-group-tree" aria-label="{{localize 'MKSDC.App.RecipeGroups'}}">
+          <header class="mk-sdc-tree-header">
+            <i class="fas fa-folder-tree"></i>
+            <span>{{localize "MKSDC.App.RecipeGroups"}}</span>
+          </header>
+
+          <nav class="mk-sdc-tree-list">
+            {{#each groupTree as |group|}}
+              <button
+                type="button"
+                class="mk-sdc-tree-item {{#if group.active}}active{{/if}}"
+                data-action="select-group"
+                data-group-type="{{group.key}}"
+              >
+                {{#if group.icon}}
+                  <img src="{{group.icon}}" alt="">
+                {{else}}
+                  <i class="fas fa-layer-group"></i>
+                {{/if}}
+                <span class="mk-sdc-tree-label">{{group.name}}</span>
+                <span class="mk-sdc-tree-count">{{group.count}}</span>
+              </button>
+            {{/each}}
+          </nav>
+
+          {{#if hasResourceActors}}
+            <section class="mk-sdc-resource-panel">
+              <header class="mk-sdc-resource-header">
+                <i class="fas fa-people-carry-box"></i>
+                <span>{{localize "MKSDC.App.ResourceSources"}}</span>
+              </header>
+              <p class="mk-sdc-resource-hint">{{localize "MKSDC.App.ResourceSourcesHint"}}</p>
+              <div class="mk-sdc-resource-list">
+                {{#each resourceActors as |source|}}
+                  <label class="mk-sdc-resource-row {{#if source.checked}}active{{/if}}">
+                    <input
+                      type="checkbox"
+                      data-action="toggle-resource-actor"
+                      data-actor-id="{{source.id}}"
+                      {{#if source.checked}}checked{{/if}}
+                    >
+                    <span class="mk-sdc-resource-order">{{source.order}}</span>
+                    <img src="{{source.img}}" alt="{{source.name}}">
+                    <span class="mk-sdc-resource-name">
+                      <strong>{{source.name}}</strong>
+                      {{#if source.primary}}<em>{{localize "MKSDC.App.Crafter"}}</em>{{/if}}
+                    </span>
+                  </label>
+                {{/each}}
+              </div>
+            </section>
+          {{/if}}
+        </aside>
+
+        <main class="mk-sdc-recipe-content">
+          <div class="mk-sdc-list-toolbar">
+            <label class="mk-sdc-search-wrap">
+              <i class="fas fa-search"></i>
+              <input
+                type="search"
+                name="recipe-search"
+                value="{{searchTerm}}"
+                placeholder="{{localize 'MKSDC.App.SearchPlaceholder'}}"
+                data-action="search"
+              >
+            </label>
+
+            <div class="mk-sdc-list-toolbar-actions">
+              <select data-action="sort" name="recipe-sort">
+                {{#each sortOptions as |option|}}
+                  <option value="{{option.value}}" {{#if option.selected}}selected{{/if}}>{{option.label}}</option>
+                {{/each}}
+              </select>
+
+              <select data-action="layout" name="layout-mode">
+                {{#each layoutOptions as |option|}}
+                  <option value="{{option.value}}" {{#if option.selected}}selected{{/if}}>{{option.label}}</option>
+                {{/each}}
+              </select>
+            </div>
+          </div>
+
+          {{#unless hasVisibleRecipes}}
+            <div class="mk-sdc-empty">
+              <i class="fas fa-scroll"></i>
+              <p>{{localize "MKSDC.App.NoRecipesInGroup"}}</p>
+            </div>
+          {{/unless}}
+
+          {{#if hasVisibleRecipes}}
+            {{#if isMasterDetail}}
+              <div class="mk-sdc-master-detail">
+                <div class="mk-sdc-master-list" role="list">
+                  {{#each visibleRecipes as |entry|}}
+                    <button
+                      type="button"
+                      class="mk-sdc-master-row {{#if entry.active}}active{{/if}} {{#if entry.canCraft}}can-craft{{else}}cannot-craft{{/if}}"
+                      data-action="select-recipe"
+                      data-recipe-id="{{entry.id}}"
+                      role="listitem"
+                    >
+                      <span class="mk-sdc-recipe-img-wrap mk-sdc-recipe-img-wrap--master">
+                        <img class="mk-sdc-recipe-img mk-sdc-recipe-img--master" src="{{entry.img}}" alt="{{entry.name}}">
+                        <span class="mk-sdc-output-qty-badge">x{{entry.recipe.outputQty}}</span>
+                      </span>
+                      <span class="mk-sdc-master-row-copy">
+                        <strong>{{entry.name}}</strong>
+                        <span class="mk-sdc-tags mk-sdc-tags--compact">
+                          <span>DC {{entry.recipe.dc}}</span>
+                          <span>{{entry.abilityLabel}}</span>
+                          <span>{{entry.recipe.time}}</span>
+                        </span>
+                      </span>
+                    </button>
+                  {{/each}}
+                </div>
+
+                {{#if selectedEntry}}
+                  <aside class="mk-sdc-detail-panel">
+                    <header class="mk-sdc-detail-header">
+                      <div class="mk-sdc-recipe-img-wrap mk-sdc-recipe-img-wrap--detail">
+                        <img class="mk-sdc-recipe-img mk-sdc-recipe-img--detail" src="{{selectedEntry.img}}" alt="{{selectedEntry.name}}">
+                        <span class="mk-sdc-output-qty-badge">x{{selectedEntry.recipe.outputQty}}</span>
+                      </div>
+                      <div>
+                        <h2>{{selectedEntry.name}}</h2>
+                        <div class="mk-sdc-tags mk-sdc-tags--compact">
+                          <span>DC {{selectedEntry.recipe.dc}}</span>
+                          <span>{{selectedEntry.abilityLabel}}</span>
+                          <span>{{selectedEntry.recipe.time}}</span>
+                        </div>
+                      </div>
+                    </header>
+
+                    {{#if selectedEntry.recipe.notes}}
+                      <p class="mk-sdc-detail-notes">{{selectedEntry.recipe.notes}}</p>
+                    {{/if}}
+
+                    {{#if selectedEntry.requirements.materialGroups.length}}
+                      <section class="mk-sdc-detail-section">
+                        <h3>{{localize "MKSDC.App.Materials"}}</h3>
+                        <ul class="mk-sdc-detail-material-list">
+                          {{#each selectedEntry.requirements.materialGroups as |group|}}
+                            <li class="{{#if group.ok}}ok{{else}}missing{{/if}}">
+                              {{#each group.alternatives as |material altIndex|}}
+                                {{#if altIndex}}<span class="mk-sdc-or-text">{{localize "MKSDC.App.Or"}}</span>{{/if}}
+                                <span class="mk-sdc-detail-material {{#if material.ok}}ok{{else}}missing{{/if}}">
+                                  <img class="mk-sdc-material-icon" src="{{material.img}}" alt="{{material.name}}">
+                                  <span>{{material.name}}</span>
+                                  <strong>{{material.ownedQty}} / {{material.qty}}</strong>
+                                  {{#if material.sourceSummary}}<small class="mk-sdc-material-sources">{{material.sourceSummary}}</small>{{/if}}
+                                </span>
+                              {{/each}}
+                            </li>
+                          {{/each}}
+                        </ul>
+                      </section>
+                    {{/if}}
+
+                    {{#if selectedEntry.hasExtraRequirements}}
+                      <section class="mk-sdc-detail-section">
+                        <h3>{{localize "MKSDC.App.Requirements"}}</h3>
+                        <div class="mk-sdc-row-extras-line">
+                          {{#if selectedEntry.recipe.toolRequired}}
+                            <span class="mk-sdc-extra-chip {{#if selectedEntry.requirements.toolOk}}ok{{else}}missing{{/if}}"><i class="fas fa-screwdriver-wrench"></i> {{selectedEntry.recipe.toolRequired}}</span>
+                          {{/if}}
+                          {{#if selectedEntry.recipe.stationRequired}}
+                            <span class="mk-sdc-extra-chip {{#if selectedEntry.requirements.stationOk}}ok{{else}}missing{{/if}}"><i class="fas fa-house-chimney"></i> {{selectedEntry.recipe.stationRequired}}</span>
+                          {{/if}}
+                          {{#if selectedEntry.recipe.goldCost}}
+                            <span class="mk-sdc-extra-chip {{#if selectedEntry.requirements.goldOk}}ok{{else}}missing{{/if}}"><i class="fas fa-coins"></i> {{selectedEntry.recipe.goldCost}}</span>
+                          {{/if}}
+                        </div>
+                      </section>
+                    {{/if}}
+
+                    <footer class="mk-sdc-detail-actions">
+                      <button
+                        type="button"
+                        class="mk-sdc-detail-craft"
+                        data-action="craft"
+                        data-recipe-id="{{selectedEntry.id}}"
+                        {{#unless selectedEntry.canCraft}}disabled{{/unless}}
+                      >
+                        <i class="fas fa-hammer"></i> {{localize "MKSDC.Buttons.Craft"}}
+                      </button>
+                      {{#if selectedEntry.isEditable}}
+                        <button type="button" data-action="edit-recipe" data-recipe-id="{{selectedEntry.id}}" title="{{localize 'MKSDC.Buttons.Edit'}}">
+                          <i class="fas fa-pen-to-square"></i>
+                        </button>
+                      {{/if}}
+                      {{#if selectedEntry.isDeletable}}
+                        <button type="button" class="mk-sdc-danger-button" data-action="delete-recipe" data-recipe-id="{{selectedEntry.id}}" title="{{localize 'MKSDC.Buttons.Delete'}}">
+                          <i class="fas fa-trash"></i>
+                        </button>
+                      {{/if}}
+                    </footer>
+                  </aside>
+                {{/if}}
+              </div>
+            {{else}}
+              <div class="mk-sdc-recipe-list" role="list">
+                {{#each visibleRecipes as |entry|}}
+                  <article class="mk-sdc-recipe-row {{#if entry.canCraft}}can-craft{{else}}cannot-craft{{/if}}" role="listitem">
+                    <div class="mk-sdc-row-main">
+                      <div class="mk-sdc-recipe-img-wrap mk-sdc-recipe-img-wrap--list">
+                        <img class="mk-sdc-recipe-img mk-sdc-recipe-img--list" src="{{entry.img}}" alt="{{entry.name}}">
+                        <span class="mk-sdc-output-qty-badge">x{{entry.recipe.outputQty}}</span>
+                      </div>
+
+                      <div class="mk-sdc-row-content">
+                        <div class="mk-sdc-row-topline">
+                          <h3>{{entry.name}}</h3>
+                        </div>
+
+                        <div class="mk-sdc-tags mk-sdc-tags--compact mk-sdc-tags--below-title">
+                          <span>DC {{entry.recipe.dc}}</span>
+                          <span>{{entry.abilityLabel}}</span>
+                          <span>{{entry.recipe.time}}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="mk-sdc-row-materials-column">
+                      {{#if entry.requirements.materialGroups.length}}
+                        <div class="mk-sdc-row-materials-line mk-sdc-row-materials-line--column">
+                          {{#each entry.requirements.materialGroups as |group groupIndex|}}
+                            {{#if groupIndex}}<span class="mk-sdc-inline-separator">•</span>{{/if}}
+                            <span class="mk-sdc-inline-group {{#if group.ok}}ok{{else}}missing{{/if}}">
+                              {{#each group.alternatives as |material altIndex|}}
+                                {{#if altIndex}}<span class="mk-sdc-or-text">{{localize "MKSDC.App.Or"}}</span>{{/if}}
+                                <span class="mk-sdc-inline-material {{#if material.ok}}ok{{else}}missing{{/if}}">
+                                  <img class="mk-sdc-material-icon mk-sdc-material-icon--inline" src="{{material.img}}" alt="{{material.name}}">
+                                  <span class="mk-sdc-inline-material-name">{{material.name}}</span>
+                                  <span class="mk-sdc-material-count">{{material.ownedQty}} / {{material.qty}}</span>
+                                  {{#if material.sourceSummary}}<span class="mk-sdc-material-sources mk-sdc-material-sources--inline">{{material.sourceSummary}}</span>{{/if}}
+                                </span>
+                              {{/each}}
+                            </span>
+                          {{/each}}
+                        </div>
+                      {{/if}}
+
+                      {{#if entry.hasExtraRequirements}}
+                        <div class="mk-sdc-row-extras-line">
+                          {{#if entry.recipe.toolRequired}}
+                            <span class="mk-sdc-extra-chip {{#if entry.requirements.toolOk}}ok{{else}}missing{{/if}}"><i class="fas fa-screwdriver-wrench"></i> {{entry.recipe.toolRequired}}</span>
+                          {{/if}}
+                          {{#if entry.recipe.stationRequired}}
+                            <span class="mk-sdc-extra-chip {{#if entry.requirements.stationOk}}ok{{else}}missing{{/if}}"><i class="fas fa-house-chimney"></i> {{entry.recipe.stationRequired}}</span>
+                          {{/if}}
+                          {{#if entry.recipe.goldCost}}
+                            <span class="mk-sdc-extra-chip {{#if entry.requirements.goldOk}}ok{{else}}missing{{/if}}"><i class="fas fa-coins"></i> {{entry.recipe.goldCost}}</span>
+                          {{/if}}
+                        </div>
+                      {{/if}}
+                    </div>
+
+                    <div class="mk-sdc-row-actions" aria-label="{{localize 'MKSDC.App.RecipeActions'}}">
+                      <button
+                        type="button"
+                        class="mk-sdc-card-icon-button"
+                        data-action="craft"
+                        data-recipe-id="{{entry.id}}"
+                        title="{{localize 'MKSDC.Buttons.Craft'}}"
+                        aria-label="{{localize 'MKSDC.Buttons.Craft'}}"
+                        {{#unless entry.canCraft}}disabled{{/unless}}
+                      >
+                        <i class="fas fa-hammer"></i>
+                      </button>
+                      {{#if entry.isEditable}}
+                        <button
+                          type="button"
+                          class="mk-sdc-card-icon-button"
+                          data-action="edit-recipe"
+                          data-recipe-id="{{entry.id}}"
+                          title="{{localize 'MKSDC.Buttons.Edit'}}"
+                          aria-label="{{localize 'MKSDC.Buttons.Edit'}}"
+                        >
+                          <i class="fas fa-pen-to-square"></i>
+                        </button>
+                      {{/if}}
+                      {{#if entry.isDeletable}}
+                        <button
+                          type="button"
+                          class="mk-sdc-card-icon-button mk-sdc-danger-button"
+                          data-action="delete-recipe"
+                          data-recipe-id="{{entry.id}}"
+                          title="{{localize 'MKSDC.Buttons.Delete'}}"
+                          aria-label="{{localize 'MKSDC.Buttons.Delete'}}"
+                        >
+                          <i class="fas fa-trash"></i>
+                        </button>
+                      {{/if}}
+                    </div>
+                  </article>
+                {{/each}}
+              </div>
+            {{/if}}
+          {{/if}}
+        </main>
+      </div>
+    {{/if}}
+    {{/if}}
+
+    {{#if isDeconstructMode}}
+      <section class="mk-sdc-deconstruct-panel">
+        <div class="mk-sdc-list-toolbar">
+          <label class="mk-sdc-search-wrap">
+            <i class="fas fa-search"></i>
+            <input
+              type="search"
+              name="deconstruct-search"
+              value="{{deconstructSearchTerm}}"
+              placeholder="{{localize 'MKSDC.Deconstruct.SearchPlaceholder'}}"
+              data-action="search-deconstruct"
+            >
+          </label>
+        </div>
+
+        <header class="mk-sdc-deconstruct-header">
+          <div>
+            <h3>{{localize "MKSDC.Deconstruct.InventoryTitle"}}</h3>
+            <p>{{localize "MKSDC.Deconstruct.InventoryHint"}}</p>
+          </div>
+        </header>
+
+        {{#unless hasDeconstructItems}}
+          <div class="mk-sdc-empty">
+            <i class="fas fa-recycle"></i>
+            <p>{{localize "MKSDC.Deconstruct.NoInventoryItems"}}</p>
+          </div>
+        {{/unless}}
+
+        {{#if hasDeconstructItems}}
+          {{#unless hasDeconstructVisibleItems}}
+            <div class="mk-sdc-empty">
+              <i class="fas fa-search"></i>
+              <p>{{localize "MKSDC.Deconstruct.NoSearchResults"}}</p>
+            </div>
+          {{/unless}}
+
+          {{#if hasDeconstructVisibleItems}}
+            <div class="mk-sdc-deconstruct-list" role="list">
+              {{#each deconstructVisibleItems as |entry|}}
+                <article class="mk-sdc-deconstruct-row {{#if entry.canDeconstruct}}can-deconstruct{{else}}cannot-deconstruct{{/if}}" role="listitem" data-item-id="{{entry.id}}">
+                  <div class="mk-sdc-deconstruct-main">
+                    <img class="mk-sdc-recipe-img mk-sdc-recipe-img--list" src="{{entry.img}}" alt="{{entry.name}}">
+                    <div class="mk-sdc-deconstruct-copy">
+                      <h3>{{entry.name}}</h3>
+                      <div class="mk-sdc-tags mk-sdc-tags--compact">
+                        <span>{{localize "MKSDC.Editor.Quantity"}} {{entry.qty}}</span>
+                        <span>{{entry.type}}</span>
+                        <span>{{localize "MKSDC.Deconstruct.FromRecipe"}} {{entry.recipeName}}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mk-sdc-deconstruct-recovery">
+                    <strong>{{localize "MKSDC.Chat.Recovered"}}</strong>
+                    {{#if entry.hasRefundMaterials}}
+                      <div class="mk-sdc-deconstruct-materials">
+                        {{#each entry.refundMaterials as |material|}}
+                          <span class="mk-sdc-inline-material ok">
+                            <img class="mk-sdc-material-icon mk-sdc-material-icon--inline" src="{{material.img}}" alt="{{material.name}}">
+                            <span class="mk-sdc-inline-material-name">{{material.name}}</span>
+                            <span class="mk-sdc-material-count">x{{material.qty}}</span>
+                          </span>
+                        {{/each}}
+                      </div>
+                    {{else}}
+                      <span class="mk-sdc-muted">{{localize "MKSDC.Deconstruct.NoMaterials"}}</span>
+                    {{/if}}
+                  </div>
+
+                  <div class="mk-sdc-row-actions">
+                    <button
+                      type="button"
+                      class="mk-sdc-card-icon-button"
+                      data-action="deconstruct"
+                      data-item-id="{{entry.id}}"
+                      title="{{localize 'MKSDC.Deconstruct.Action'}}"
+                      aria-label="{{localize 'MKSDC.Deconstruct.Action'}}"
+                      {{#unless entry.canDeconstruct}}disabled{{/unless}}
+                    >
+                      <i class="fas fa-recycle"></i>
+                    </button>
+                  </div>
+                </article>
+              {{/each}}
+            </div>
+          {{/if}}
+        {{/if}}
+      </section>
+    {{/if}}
+  {{/if}}
+</section>
