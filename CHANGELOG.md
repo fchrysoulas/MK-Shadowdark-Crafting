@@ -2,6 +2,12 @@
 
 All notable changes to MK Shadowdark Crafting are documented here.
 
+## 0.4.1
+
+- Validated Foundry VTT v13 scene control integration by supporting the v13 `Record<string, SceneControl>` control shape while keeping the v12 array shape.
+- Added v13 ApplicationV2 actor sheet header-control support for the Crafting button.
+- Updated manifest compatibility to verify and allow Foundry VTT v13.
+
 ## 0.4.0
 
 - Made recipe actions book-aware so craft, edit, and delete target the correct recipe when multiple books are active.

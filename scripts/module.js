@@ -37,25 +37,61 @@ function registerHandlebarsHelpers() {
   Handlebars.registerHelper("mkSdcJson", (value) => JSON.stringify(value, null, 2));
 }
 
+function getTokenSceneControl(controls) {
+  if (Array.isArray(controls)) return controls.find((control) => ["token", "tokens"].includes(control?.name));
+  return controls?.tokens ?? controls?.token ?? null;
+}
+
+function addSceneControlTool(control, tool) {
+  if (!control) return;
+
+  if (Array.isArray(control.tools)) {
+    if (!control.tools.some((entry) => entry?.name === tool.name)) {
+      control.tools.push({
+        ...tool,
+        order: control.tools.length
+      });
+    }
+    return;
+  }
+
+  control.tools ||= {};
+  if (!control.tools[tool.name]) {
+    control.tools[tool.name] = {
+      ...tool,
+      order: Object.keys(control.tools).length
+    };
+  }
+}
+
+function getSheetActor(app, { allowActorProperty = false } = {}) {
+  if (app?.document?.documentName === "Actor") return app.document;
+  if (app?.object?.documentName === "Actor") return app.object;
+  if (allowActorProperty && app?.actor?.documentName === "Actor") return app.actor;
+  if (allowActorProperty && /ActorSheet/i.test(app?.constructor?.name || "") && app?.actor) return app.actor;
+  return null;
+}
+
 function registerSceneControlButton(controls) {
   if (!setting("showSceneControl")) return;
 
-  const tokenControls = controls.find((control) => control.name === "token");
+  const tokenControls = getTokenSceneControl(controls);
   if (!tokenControls) return;
 
-  tokenControls.tools.push({
+  addSceneControlTool(tokenControls, {
     name: "mk-shadowdark-crafting",
     title: game.i18n.localize("MKSDC.Controls.OpenCrafting"),
     icon: "fas fa-hammer",
     button: true,
     visible: game.user.isGM || setting("allowPlayerCrafting"),
-    onClick: () => openCraftingApp()
+    onClick: () => openCraftingApp(),
+    onChange: () => openCraftingApp()
   });
 }
 
 function registerActorSheetButton(app, buttons) {
   if (!setting("showActorSheetButton")) return;
-  const actor = app?.actor;
+  const actor = getSheetActor(app, { allowActorProperty: true });
   if (!actor) return;
   if (!actor.isOwner && !game.user.isGM) return;
 
@@ -64,6 +100,24 @@ function registerActorSheetButton(app, buttons) {
     class: "mk-sdc-open-crafting",
     icon: "fas fa-hammer",
     onclick: () => openCraftingApp(actor)
+  });
+}
+
+function registerActorSheetHeaderControlV2(app, controls) {
+  if (!setting("showActorSheetButton")) return;
+  if (!Array.isArray(controls)) return;
+
+  const actor = getSheetActor(app, { allowActorProperty: /ActorSheet/i.test(app?.constructor?.name || "") });
+  if (!actor) return;
+  if (!actor.isOwner && !game.user.isGM) return;
+  if (controls.some((control) => control?.action === "mk-shadowdark-crafting")) return;
+
+  controls.unshift({
+    action: "mk-shadowdark-crafting",
+    label: "MKSDC.Buttons.Crafting",
+    icon: "fas fa-hammer",
+    visible: true,
+    onClick: () => openCraftingApp(actor)
   });
 }
 
@@ -109,3 +163,4 @@ Hooks.once("ready", () => {
 
 Hooks.on("getSceneControlButtons", registerSceneControlButton);
 Hooks.on("getActorSheetHeaderButtons", registerActorSheetButton);
+Hooks.on("getHeaderControlsApplicationV2", registerActorSheetHeaderControlV2);
