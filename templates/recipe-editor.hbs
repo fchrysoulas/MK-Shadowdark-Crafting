@@ -47,11 +47,20 @@
     <h2><i class="fas fa-hammer"></i> {{localize "MKSDC.Editor.RecipeSection"}}</h2>
 
     <input type="hidden" name="recipe.id" value="{{recipe.id}}">
-    <input type="hidden" name="recipe.bookId" value="{{recipe.bookId}}">
     <input type="hidden" name="recipe.craftType" value="{{recipe.craftType}}">
     <input type="hidden" name="recipe.deconstructEnabled" value="true">
+    <input type="hidden" name="recipe.deconstructGenerated" value="{{recipe.deconstructGenerated}}">
 
     <div class="mk-sdc-two-col">
+      <div class="form-group">
+        <label>{{localize "MKSDC.Editor.RecipeBook"}}</label>
+        <select name="recipe.bookId">
+          {{#each bookOptions as |book|}}
+            <option value="{{book.id}}" {{#if book.selected}}selected{{/if}}>{{book.name}}</option>
+          {{/each}}
+        </select>
+      </div>
+
       <div class="form-group">
         <label>{{localize "MKSDC.Editor.DC"}}</label>
         <input type="number" name="recipe.dc" value="{{recipe.dc}}" min="1" step="1">

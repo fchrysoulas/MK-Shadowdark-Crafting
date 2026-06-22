@@ -1,6 +1,5 @@
-import { DEFAULT_BOOK_ID, FLAGS, MODULE_ID, TEMPLATES } from "./constants.js";
-import { setting } from "./settings.js";
-import { getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, sanitizeRecipeData, setActiveRecipeBookIds, setRecipeBooks } from "./recipe-utils.js";
+import { DEFAULT_BOOK_ID, MODULE_ID, TEMPLATES } from "./constants.js";
+import { createRecipeId, getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, sanitizeRecipeData, setActiveRecipeBookIds, setRecipeBooks } from "./recipe-utils.js";
 
 const BOOK_KIND = "mk-shadowdark-crafting.recipe-book";
 const BOOK_SCHEMA_VERSION = 2;
@@ -133,14 +132,57 @@ export async function importRecipeBookData(data, { mode = "create", activate = t
     : { name: raw?.name || game.i18n.localize("MKSDC.RecipeBooks.ImportedName"), recipes: [] };
 
   const baseId = String(incomingBase.id || slugify(incomingBase.name) || DEFAULT_BOOK_ID).trim();
-  const id = mode === "merge" && books[baseId] ? baseId : `${slugify(incomingBase.name || "imported-book")}-${foundry.utils.randomID?.(6) || Date.now()}`;
+  const id = mode === "merge"
+    ? baseId
+    : `${slugify(incomingBase.name || "imported-book")}-${foundry.utils.randomID?.(6) || Date.now()}`;
 
-  const book = normalizeBook({
-    ...incomingBase,
-    id,
-    active: activate,
-    recipes: (incomingBase.recipes || []).map((recipe) => ({ ...recipe, id: mode === "merge" ? recipe.id : undefined, bookId: id }))
-  }, { name: game.i18n.localize("MKSDC.RecipeBooks.ImportedName") });
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  let book = null;
+
+  if (mode === "merge") {
+    const existing = books[id] ?? null;
+    const nextRecipes = Array.isArray(existing?.recipes) ? existing.recipes.map((recipe) => sanitizeRecipeData(recipe, { bookId: id, id: recipe.id })) : [];
+    const indexById = new Map(nextRecipes.map((recipe, index) => [String(recipe.id), index]));
+
+    for (const incomingRecipe of incomingBase.recipes || []) {
+      if (!incomingRecipe) {
+        skipped += 1;
+        continue;
+      }
+
+      const recipe = sanitizeRecipeData(incomingRecipe, { bookId: id, id: incomingRecipe.id || createRecipeId() });
+      const existingIndex = indexById.get(String(recipe.id));
+      if (existingIndex === undefined) {
+        nextRecipes.push(recipe);
+        indexById.set(String(recipe.id), nextRecipes.length - 1);
+        created += 1;
+      } else {
+        nextRecipes[existingIndex] = recipe;
+        updated += 1;
+      }
+    }
+
+    book = normalizeBook({
+      ...incomingBase,
+      ...(existing || {}),
+      id,
+      name: incomingBase.name || existing?.name || game.i18n.localize("MKSDC.RecipeBooks.ImportedName"),
+      active: activate || Boolean(existing?.active),
+      recipes: nextRecipes,
+      createdAt: existing?.createdAt || incomingBase.createdAt,
+      updatedAt: nowIso()
+    }, { name: game.i18n.localize("MKSDC.RecipeBooks.ImportedName") });
+  } else {
+    book = normalizeBook({
+      ...incomingBase,
+      id,
+      active: activate,
+      recipes: (incomingBase.recipes || []).filter(Boolean).map((recipe) => ({ ...recipe, id: undefined, bookId: id }))
+    }, { name: game.i18n.localize("MKSDC.RecipeBooks.ImportedName") });
+    created = book.recipeCount;
+  }
 
   books[id] = book;
   await writeBooks(books);
@@ -148,11 +190,11 @@ export async function importRecipeBookData(data, { mode = "create", activate = t
 
   ui.notifications.info(game.i18n.format("MKSDC.Notifications.RecipeBookImported", {
     name: book.name,
-    created: book.recipeCount,
-    updated: 0,
-    skipped: 0
+    created,
+    updated,
+    skipped
   }));
-  return { book, created: book.recipeCount, updated: 0, skipped: 0 };
+  return { book, created, updated, skipped };
 }
 
 export async function renameSavedRecipeBook(bookId, name) {
@@ -210,10 +252,14 @@ export async function updateSavedRecipeBookFromWorld(bookId) {
     return null;
   }
 
-  const activeRecipes = getActiveRecipes();
+  const activeRecipes = getRecipeEntriesForActor(null, { activeOnly: true })
+    .filter((entry) => entry.bookId === id)
+    .map((entry) => entry.recipe);
+  const sourceRecipes = activeRecipes.length ? activeRecipes : (Array.isArray(existing.recipes) ? existing.recipes : []);
+
   books[id] = normalizeBook({
     ...existing,
-    recipes: activeRecipes.map((recipe) => ({ ...recipe, bookId: id })),
+    recipes: sourceRecipes.map((recipe) => ({ ...recipe, bookId: id })),
     updatedAt: nowIso()
   });
 

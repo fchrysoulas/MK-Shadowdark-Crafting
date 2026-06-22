@@ -2,6 +2,19 @@
 
 All notable changes to MK Shadowdark Crafting are documented here.
 
+## 0.4.0
+
+- Made recipe actions book-aware so craft, edit, and delete target the correct recipe when multiple books are active.
+- Fixed recipe book import behavior: merge now upserts recipes into the imported book ID, while create-copy imports regenerate recipe IDs.
+- Added a Recipe Book selector to the Recipe Editor and safely removes the old copy when a recipe is moved between books.
+- Prevented successful rolls from creating output items when material or gold consumption fails.
+- Aligned Deconstruct preview and execution so both use the same recipe snapshot/current recipe resolution.
+- Improved auto-generated deconstruction recovery for crafted items with recorded consumed materials.
+- Tightened item matching to exact names or UUIDs to avoid consuming similarly named items.
+- Fixed ability score handling for `.value` paths so scores such as 8 are converted to modifiers.
+- Removed visible compendium recipe settings until compendium recipe loading is implemented.
+- Limited manifest compatibility to Foundry VTT v12 pending a v13 ApplicationV2/control hook migration.
+
 ## 0.3.15
 
 - Added explicit deconstruct recipe data to saved recipes.

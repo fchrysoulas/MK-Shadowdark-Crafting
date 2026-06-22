@@ -52,7 +52,7 @@ export function findOwnedItemByName(actor, name) {
   const exact = actor.items?.find((item) => normalizeName(item.name) === target);
   if (exact) return exact;
 
-  return actor.items?.find((item) => normalizeName(item.name).includes(target)) ?? null;
+  return null;
 }
 
 export function findOwnedItemByUuid(actor, uuid) {
@@ -368,6 +368,10 @@ export function getAbilityMod(actor, ability) {
   const found = getSystemPath(actor, paths);
   const raw = Number(found.value ?? 0);
   if (!Number.isFinite(raw)) return 0;
+
+  if (String(found.path || "").endsWith(".value") && raw >= 3 && raw <= 30) {
+    return Math.floor((raw - 10) / 2);
+  }
 
   if (Math.abs(raw) <= 10) return raw;
   return Math.floor((raw - 10) / 2);

@@ -155,6 +155,8 @@
                       class="mk-sdc-master-row {{#if entry.active}}active{{/if}} {{#if entry.canCraft}}can-craft{{else}}cannot-craft{{/if}}"
                       data-action="select-recipe"
                       data-recipe-id="{{entry.id}}"
+                      data-recipe-key="{{entry.key}}"
+                      data-book-id="{{entry.bookId}}"
                       role="listitem"
                     >
                       <span class="mk-sdc-recipe-img-wrap mk-sdc-recipe-img-wrap--master">
@@ -238,17 +240,18 @@
                         class="mk-sdc-detail-craft"
                         data-action="craft"
                         data-recipe-id="{{selectedEntry.id}}"
+                        data-book-id="{{selectedEntry.bookId}}"
                         {{#unless selectedEntry.canCraft}}disabled{{/unless}}
                       >
                         <i class="fas fa-hammer"></i> {{localize "MKSDC.Buttons.Craft"}}
                       </button>
                       {{#if selectedEntry.isEditable}}
-                        <button type="button" data-action="edit-recipe" data-recipe-id="{{selectedEntry.id}}" title="{{localize 'MKSDC.Buttons.Edit'}}">
+                        <button type="button" data-action="edit-recipe" data-recipe-id="{{selectedEntry.id}}" data-book-id="{{selectedEntry.bookId}}" title="{{localize 'MKSDC.Buttons.Edit'}}">
                           <i class="fas fa-pen-to-square"></i>
                         </button>
                       {{/if}}
                       {{#if selectedEntry.isDeletable}}
-                        <button type="button" class="mk-sdc-danger-button" data-action="delete-recipe" data-recipe-id="{{selectedEntry.id}}" title="{{localize 'MKSDC.Buttons.Delete'}}">
+                        <button type="button" class="mk-sdc-danger-button" data-action="delete-recipe" data-recipe-id="{{selectedEntry.id}}" data-book-id="{{selectedEntry.bookId}}" title="{{localize 'MKSDC.Buttons.Delete'}}">
                           <i class="fas fa-trash"></i>
                         </button>
                       {{/if}}
@@ -320,6 +323,7 @@
                         class="mk-sdc-card-icon-button"
                         data-action="craft"
                         data-recipe-id="{{entry.id}}"
+                        data-book-id="{{entry.bookId}}"
                         title="{{localize 'MKSDC.Buttons.Craft'}}"
                         aria-label="{{localize 'MKSDC.Buttons.Craft'}}"
                         {{#unless entry.canCraft}}disabled{{/unless}}
@@ -332,6 +336,7 @@
                           class="mk-sdc-card-icon-button"
                           data-action="edit-recipe"
                           data-recipe-id="{{entry.id}}"
+                          data-book-id="{{entry.bookId}}"
                           title="{{localize 'MKSDC.Buttons.Edit'}}"
                           aria-label="{{localize 'MKSDC.Buttons.Edit'}}"
                         >
@@ -344,6 +349,7 @@
                           class="mk-sdc-card-icon-button mk-sdc-danger-button"
                           data-action="delete-recipe"
                           data-recipe-id="{{entry.id}}"
+                          data-book-id="{{entry.bookId}}"
                           title="{{localize 'MKSDC.Buttons.Delete'}}"
                           aria-label="{{localize 'MKSDC.Buttons.Delete'}}"
                         >

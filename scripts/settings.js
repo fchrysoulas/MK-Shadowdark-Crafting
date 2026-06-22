@@ -82,24 +82,6 @@ export function registerSettings() {
     default: false
   });
 
-  game.settings.register(MODULE_ID, "includeCompendiumRecipes", {
-    name: game.i18n.localize("MKSDC.Settings.IncludeCompendiumRecipes.Name"),
-    hint: game.i18n.localize("MKSDC.Settings.IncludeCompendiumRecipes.Hint"),
-    scope: "world",
-    config: true,
-    type: Boolean,
-    default: false
-  });
-
-  game.settings.register(MODULE_ID, "recipeCompendiumFilter", {
-    name: game.i18n.localize("MKSDC.Settings.RecipeCompendiumFilter.Name"),
-    hint: game.i18n.localize("MKSDC.Settings.RecipeCompendiumFilter.Hint"),
-    scope: "world",
-    config: true,
-    type: String,
-    default: ""
-  });
-
   game.settings.register(MODULE_ID, "recipeItemType", {
     name: game.i18n.localize("MKSDC.Settings.RecipeItemType.Name"),
     hint: game.i18n.localize("MKSDC.Settings.RecipeItemType.Hint"),

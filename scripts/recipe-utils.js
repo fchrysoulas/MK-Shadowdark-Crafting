@@ -9,6 +9,39 @@ function randomId(prefix = "recipe") {
   return `${prefix}-${id}`;
 }
 
+export function createRecipeId(prefix = "recipe") {
+  return randomId(prefix);
+}
+
+export function makeRecipeKey(bookId, recipeId) {
+  const safeBookId = String(bookId || DEFAULT_BOOK_ID).trim();
+  const safeRecipeId = String(recipeId || "").trim();
+  return `${safeBookId}::${safeRecipeId}`;
+}
+
+export function parseRecipeReference(reference, options = {}) {
+  const optionBookId = String(options.bookId || "").trim();
+
+  if (reference && typeof reference === "object") {
+    const id = String(reference.recipeId || reference.id || reference.uuid || "").trim();
+    const bookId = String(reference.bookId || optionBookId || "").trim();
+    return { id, bookId };
+  }
+
+  const raw = String(reference || "").trim();
+  if (!raw) return { id: "", bookId: optionBookId };
+
+  const separatorIndex = raw.indexOf("::");
+  if (separatorIndex >= 0) {
+    return {
+      bookId: raw.slice(0, separatorIndex).trim() || optionBookId,
+      id: raw.slice(separatorIndex + 2).trim()
+    };
+  }
+
+  return { id: raw, bookId: optionBookId };
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -302,9 +335,14 @@ export function sanitizeRecipeData(data = {}, options = {}) {
   recipe.materialGroups = normalizeMaterialGroups(recipe);
   recipe.materials = flattenMaterialGroups(recipe.materialGroups);
   recipe.deconstructEnabled = recipe.deconstructEnabled !== false;
+  const hadDeconstructMaterials = Array.isArray(data.deconstructMaterials) && data.deconstructMaterials.length > 0;
+  recipe.deconstructGenerated = data.deconstructGenerated === true || data.deconstructGenerated === "true";
   recipe.deconstructMaterials = normalizeDeconstructMaterials(recipe);
   if (recipe.deconstructEnabled && !recipe.deconstructMaterials.length) {
     recipe.deconstructMaterials = buildDefaultDeconstructMaterials(recipe);
+    recipe.deconstructGenerated = true;
+  } else if (hadDeconstructMaterials && data.deconstructGenerated !== true && data.deconstructGenerated !== "true") {
+    recipe.deconstructGenerated = false;
   }
   return recipe;
 }
@@ -343,6 +381,7 @@ export function getRecipeEntriesForActor(_actor = null, { activeOnly = true } = 
       entries.push({
         id: recipe.id,
         uuid: recipe.id,
+        key: makeRecipeKey(bookId, recipe.id),
         bookId,
         bookName: book.name || bookId,
         name: recipe.outputName,
@@ -356,14 +395,21 @@ export function getRecipeEntriesForActor(_actor = null, { activeOnly = true } = 
   return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function getRecipeById(recipeId) {
-  const id = String(recipeId || "").trim();
+export async function getRecipeById(recipeId, options = {}) {
+  const { id, bookId } = parseRecipeReference(recipeId, options);
   if (!id) return null;
 
   const books = getRecipeBooks();
-  for (const [bookId, book] of Object.entries(books)) {
-    const recipe = (book.recipes || []).find((entry) => String(entry.id) === id);
+  if (bookId) {
+    if (!books[bookId]) return null;
+    const recipe = (books[bookId].recipes || []).find((entry) => String(entry.id) === id);
     if (recipe) return sanitizeRecipeData(recipe, { bookId, id: recipe.id });
+    return null;
+  }
+
+  for (const [entryBookId, book] of Object.entries(books)) {
+    const recipe = (book.recipes || []).find((entry) => String(entry.id) === id);
+    if (recipe) return sanitizeRecipeData(recipe, { bookId: entryBookId, id: recipe.id });
   }
 
   // Backward compatibility: if an old UUID is passed, try to resolve it as an item recipe.
@@ -411,16 +457,23 @@ export async function upsertRecipe(recipeData, { bookId = null } = {}) {
   return recipe;
 }
 
-export async function deleteRecipe(recipeId) {
+export async function deleteRecipe(recipeId, options = {}) {
   if (!game.user.isGM) {
     ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.GMOnly"));
     return false;
   }
 
-  const id = String(recipeId || "").trim();
+  const { id, bookId } = parseRecipeReference(recipeId, options);
+  const notify = options.notify !== false;
   const books = getRecipeBooks();
+  if (bookId && !books[bookId]) {
+    if (notify) ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
+    return false;
+  }
 
-  for (const [bookId, book] of Object.entries(books)) {
+  const bookEntries = bookId ? [[bookId, books[bookId]]] : Object.entries(books);
+
+  for (const [entryBookId, book] of bookEntries) {
     const list = Array.isArray(book.recipes) ? book.recipes : [];
     const next = list.filter((recipe) => String(recipe.id) !== id);
     if (next.length === list.length) continue;
@@ -428,13 +481,13 @@ export async function deleteRecipe(recipeId) {
     book.recipes = next;
     book.recipeCount = next.length;
     book.updatedAt = nowIso();
-    books[bookId] = book;
+    books[entryBookId] = book;
     await setRecipeBookSetting(books);
-    ui.notifications.info(game.i18n.localize("MKSDC.Notifications.RecipeDeleted"));
+    if (notify) ui.notifications.info(game.i18n.localize("MKSDC.Notifications.RecipeDeleted"));
     return true;
   }
 
-  ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
+  if (notify) ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
   return false;
 }
 
@@ -542,7 +595,7 @@ export async function createRecipeItem(recipeData, _itemData = {}) {
 
 export async function deleteRecipeItem(itemOrId) {
   if (typeof itemOrId === "string") return deleteRecipe(itemOrId);
-  if (itemOrId?.id && !(itemOrId?.delete)) return deleteRecipe(itemOrId.id);
+  if (itemOrId?.id && !(itemOrId?.delete)) return deleteRecipe(itemOrId.id, { bookId: itemOrId.bookId });
 
   if (!game.user.isGM) {
     ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.GMOnly"));

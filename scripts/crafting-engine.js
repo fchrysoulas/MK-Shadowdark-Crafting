@@ -165,7 +165,7 @@ export class CraftingEngine {
       return null;
     }
 
-    const recipe = await getRecipeById(recipeId);
+    const recipe = await getRecipeById(recipeId, { bookId: options.bookId });
     if (!recipe) {
       ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
       return null;
@@ -212,10 +212,13 @@ export class CraftingEngine {
     void showDiceSoNiceRoll(roll, actor);
     const d20 = getD20Result(roll);
     const outcome = getOutcome({ rollTotal: roll.total, dc: recipe.dc, d20 });
-    const success = outcome === "success" || outcome === "criticalSuccess";
+    const rollSuccess = outcome === "success" || outcome === "criticalSuccess";
 
     const consumed = [];
+    let consumptionFailed = false;
+    const consumptionFailureNotes = [];
     for (const group of requirements.materialGroups ?? []) {
+      if (consumptionFailed) break;
       const material = group.selected;
       if (!material) continue;
       const qty = getConsumeQty(material.qty, outcome);
@@ -230,20 +233,33 @@ export class CraftingEngine {
           img: material.img || "icons/svg/item-bag.svg"
         });
       }
+      if (!result?.ok) {
+        consumptionFailed = true;
+        consumptionFailureNotes.push(game.i18n.format("MKSDC.Notes.MaterialConsumptionFailed", {
+          name: material.name,
+          remaining: result?.remaining ?? qty
+        }));
+      }
     }
 
-    if (setting("useGoldCost") && recipe.goldCost > 0) {
+    if (!consumptionFailed && setting("useGoldCost") && recipe.goldCost > 0) {
       const goldQty = getConsumeQty(recipe.goldCost, outcome);
       if (goldQty > 0) {
         const result = await consumeGoldFromActors(resourceActors, goldQty);
         for (const entry of result.consumed ?? []) {
           consumed.push({ ...entry, kind: "gold", name: game.i18n.localize("MKSDC.Gold") });
         }
+        if (!result?.ok) {
+          consumptionFailed = true;
+          consumptionFailureNotes.push(game.i18n.format("MKSDC.Notes.GoldConsumptionFailed", {
+            remaining: result?.remaining ?? goldQty
+          }));
+        }
       }
     }
 
     let createdItem = null;
-    if (success) {
+    if (rollSuccess && !consumptionFailed) {
       try {
         createdItem = await createActorItemFromRecipe(actor, recipe, {
           recipeId: recipe.id,
@@ -264,16 +280,20 @@ export class CraftingEngine {
     const notes = [];
     if (outcome === "criticalSuccess") notes.push(game.i18n.localize("MKSDC.Notes.CriticalSuccess"));
     if (outcome === "criticalFailure") notes.push(game.i18n.localize("MKSDC.Notes.CriticalFailure"));
-    if (!success && consumed.length) notes.push(game.i18n.localize("MKSDC.Notes.MaterialsLost"));
-    if (!success && !consumed.length) notes.push(game.i18n.localize("MKSDC.Notes.NoMaterialsLost"));
+    if (consumptionFailed) notes.push(...consumptionFailureNotes, game.i18n.localize("MKSDC.Notes.OutputNotCreated"));
+    if (!rollSuccess && consumed.length) notes.push(game.i18n.localize("MKSDC.Notes.MaterialsLost"));
+    if (!rollSuccess && !consumed.length) notes.push(game.i18n.localize("MKSDC.Notes.NoMaterialsLost"));
+
+    const finalOutcome = consumptionFailed ? "blocked" : outcome;
+    const finalOutcomeLabel = consumptionFailed ? game.i18n.localize("MKSDC.Outcome.Blocked") : getOutcomeLabel(outcome);
 
     await postCraftingChatCard(actor, {
       actor,
       recipe,
       recipeItem,
       requirements,
-      outcome,
-      outcomeLabel: getOutcomeLabel(outcome),
+      outcome: finalOutcome,
+      outcomeLabel: finalOutcomeLabel,
       rollHtml,
       rollTotal: roll.total,
       dc: recipe.dc,
@@ -290,7 +310,7 @@ export class CraftingEngine {
       actor,
       recipe,
       recipeItem,
-      outcome,
+      outcome: finalOutcome,
       roll,
       rollAbility: ability,
       rollMode,

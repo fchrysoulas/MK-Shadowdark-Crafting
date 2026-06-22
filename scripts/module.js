@@ -74,7 +74,7 @@ Hooks.once("init", () => {
   window.mkShadowdarkCrafting = {
     open: openCraftingApp,
     openRecipeEditor: (item = null) => new RecipeEditor(item).render(true),
-    craft: (actor, recipeUuid) => CraftingEngine.craft(actor, recipeUuid),
+    craft: (actor, recipeUuid, options = {}) => CraftingEngine.craft(actor, recipeUuid, options),
     deconstruct: (actor, item, options = {}) => deconstructItem(actor, item, options),
     createRecipeItem,
     createSampleRecipes,

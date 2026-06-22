@@ -205,6 +205,7 @@ export class CraftingApp extends Application {
       return {
         uuid: recipe.id,
         id: recipe.id,
+        key: entry.key,
         bookId: entry.bookId,
         bookName: entry.bookName,
         name: recipe.outputName,
@@ -246,13 +247,13 @@ export class CraftingApp extends Application {
 
     visibleRecipes = visibleRecipes.filter((entry) => this._matchesSearch(entry));
 
-    if (visibleRecipes.length && !visibleRecipes.some((entry) => entry.id === this.selectedRecipeId)) {
-      this.selectedRecipeId = visibleRecipes[0].id;
+    if (visibleRecipes.length && !visibleRecipes.some((entry) => entry.key === this.selectedRecipeId)) {
+      this.selectedRecipeId = visibleRecipes[0].key;
     }
 
-    const selectedEntry = visibleRecipes.find((entry) => entry.id === this.selectedRecipeId) ?? visibleRecipes[0] ?? null;
+    const selectedEntry = visibleRecipes.find((entry) => entry.key === this.selectedRecipeId) ?? visibleRecipes[0] ?? null;
     for (const entry of visibleRecipes) {
-      entry.active = selectedEntry?.id === entry.id;
+      entry.active = selectedEntry?.key === entry.key;
     }
 
     const groupTree = [
@@ -380,7 +381,7 @@ export class CraftingApp extends Application {
 
     html.find("[data-action='select-recipe']").on("click", (event) => {
       event.preventDefault();
-      this.selectedRecipeId = event.currentTarget.dataset.recipeId || null;
+      this.selectedRecipeId = event.currentTarget.dataset.recipeKey || event.currentTarget.dataset.recipeId || null;
       this._restoreSearchFocus = false;
       this.render(false);
     });
@@ -402,8 +403,9 @@ export class CraftingApp extends Application {
       event.preventDefault();
       const button = event.currentTarget;
       const recipeId = button.dataset.recipeId || button.dataset.recipeUuid;
+      const bookId = button.dataset.bookId || "";
       button.disabled = true;
-      await CraftingEngine.craft(this.actor, recipeId, { resourceActorIds: this._getSelectedResourceActorIds() });
+      await CraftingEngine.craft(this.actor, recipeId, { bookId, resourceActorIds: this._getSelectedResourceActorIds() });
       this.render(false);
     });
 
@@ -433,7 +435,8 @@ export class CraftingApp extends Application {
     html.find("[data-action='edit-recipe']").on("click", async (event) => {
       event.preventDefault();
       const recipeId = event.currentTarget.dataset.recipeId || event.currentTarget.dataset.recipeUuid;
-      const recipe = await getRecipeById(recipeId);
+      const bookId = event.currentTarget.dataset.bookId || "";
+      const recipe = await getRecipeById(recipeId, { bookId });
       if (!recipe) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
       new RecipeEditor(recipe).render(true);
     });
@@ -441,7 +444,8 @@ export class CraftingApp extends Application {
     html.find("[data-action='delete-recipe']").on("click", async (event) => {
       event.preventDefault();
       const recipeId = event.currentTarget.dataset.recipeId || event.currentTarget.dataset.recipeUuid;
-      const recipe = await getRecipeById(recipeId);
+      const bookId = event.currentTarget.dataset.bookId || "";
+      const recipe = await getRecipeById(recipeId, { bookId });
       if (!recipe) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
 
       const confirmed = await Dialog.confirm({
@@ -453,7 +457,7 @@ export class CraftingApp extends Application {
       });
 
       if (!confirmed) return;
-      await deleteRecipe(recipeId);
+      await deleteRecipe(recipeId, { bookId });
       this.render(false);
     });
 

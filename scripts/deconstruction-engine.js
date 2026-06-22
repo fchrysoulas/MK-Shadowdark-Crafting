@@ -2,7 +2,7 @@ import { FLAGS, MODULE_ID } from "./constants.js";
 import { setting } from "./settings.js";
 import { postCraftingChatCard } from "./chat.js";
 import { addOwnedItemQuantity, consumeOwnedItemDocument, getItemQuantity, normalizeName } from "./item-utils.js";
-import { getRecipeById, getRecipeDeconstructMaterials, getRecipeEntriesForActor, hasRecipeDeconstruction, isRecipeItem, sanitizeRecipeData } from "./recipe-utils.js";
+import { getRecipeDeconstructMaterials, getRecipeEntriesForActor, hasRecipeDeconstruction, isRecipeItem, sanitizeRecipeData } from "./recipe-utils.js";
 
 function getCraftedFlag(item) {
   return item?.getFlag?.(MODULE_ID, FLAGS.CRAFTED) ?? null;
@@ -36,8 +36,12 @@ export function findRecipeForOutputItemSync(item) {
 
   const entries = getRecipeEntriesForActor(null, { activeOnly: false });
   const byRecipeId = String(crafted?.recipeId || "").trim();
+  const byRecipeBookId = String(crafted?.recipeBookId || "").trim();
   if (byRecipeId) {
-    const found = entries.find((entry) => String(entry.recipe?.id || entry.id) === byRecipeId);
+    const found = entries.find((entry) => (
+      String(entry.recipe?.id || entry.id) === byRecipeId
+      && (!byRecipeBookId || String(entry.bookId || entry.recipe?.bookId || "") === byRecipeBookId)
+    ));
     if (found?.recipe) return found.recipe;
   }
 
@@ -46,13 +50,6 @@ export function findRecipeForOutputItemSync(item) {
 }
 
 async function findRecipeForOutputItem(item) {
-  const crafted = getCraftedFlag(item);
-  const byRecipeId = String(crafted?.recipeId || "").trim();
-  if (byRecipeId) {
-    const recipe = await getRecipeById(byRecipeId);
-    if (recipe) return recipe;
-  }
-
   return findRecipeForOutputItemSync(item);
 }
 
@@ -88,7 +85,7 @@ function getRecipeDefaultMaterials(recipe) {
 function getActualConsumedMaterials(item, recipe) {
   const crafted = getCraftedFlag(item);
   if (Array.isArray(crafted?.consumedMaterials) && crafted.consumedMaterials.length) {
-    return aggregateMaterials(crafted.consumedMaterials);
+    return aggregateMaterials(crafted.consumedMaterials.filter((material) => material?.kind !== "gold"));
   }
 
   return getRecipeDefaultMaterials(recipe);
@@ -100,7 +97,16 @@ function getCreatedQty(item, recipe) {
   return Math.max(1, Number.isFinite(createdQty) ? createdQty : 1);
 }
 
-function getRefundMaterials(_item, recipe) {
+function getRefundMaterials(item, recipe) {
+  if (recipe?.deconstructGenerated) {
+    const createdQty = getCreatedQty(item, recipe);
+    const consumedMaterials = getActualConsumedMaterials(item, recipe);
+    return aggregateMaterials(consumedMaterials.map((material) => ({
+      ...material,
+      qty: Math.ceil((Math.max(0, Number(material.qty || 0)) / createdQty) / 2)
+    })));
+  }
+
   return getRecipeDeconstructMaterials(recipe);
 }
 

@@ -243,6 +243,14 @@ export class RecipeEditor extends FormApplication {
     const itemTypes = getAvailableItemTypes();
     const books = getRecipeBooks();
     const bookOptions = Object.entries(books).map(([id, book]) => ({ id, name: book.name || id, selected: id === recipe.bookId }));
+    if (!bookOptions.some((book) => book.id === recipe.bookId)) {
+      const id = recipe.bookId || getEditableRecipeBookId();
+      bookOptions.unshift({
+        id,
+        name: books[id]?.name || game.i18n.localize("MKSDC.RecipeBooks.WorldRecipesName") || id,
+        selected: true
+      });
+    }
 
     recipe.outputImg = recipe.outputImg || "icons/svg/item-bag.svg";
     recipe.materialGroups = recipe.materialGroups ?? [];
@@ -425,7 +433,7 @@ export class RecipeEditor extends FormApplication {
       });
 
       if (!confirmed) return;
-      const deleted = await deleteRecipe(this.recipe.id);
+      const deleted = await deleteRecipe(this.recipe.id, { bookId: this.recipe.bookId });
       if (deleted) this.close();
     });
   }
@@ -514,11 +522,17 @@ export class RecipeEditor extends FormApplication {
       ...(expanded.recipe ?? {}),
       abilities: normalizeRecipeAbilities(expanded.recipe ?? {}),
       materialGroups,
+      deconstructGenerated: deconstructMaterials.length ? false : expanded.recipe?.deconstructGenerated,
       deconstructMaterials
     });
 
     const wasEdit = Boolean(this.recipe?.id);
+    const previousBookId = String(this.recipe?.bookId || "").trim();
     const saved = await upsertRecipe(recipe, { bookId: recipe.bookId || getEditableRecipeBookId() });
+    if (!saved) return;
+    if (wasEdit && previousBookId && previousBookId !== saved.bookId) {
+      await deleteRecipe(saved.id, { bookId: previousBookId, notify: false });
+    }
     this.recipe = saved;
     ui.notifications.info(game.i18n.localize(wasEdit ? "MKSDC.Notifications.RecipeUpdated" : "MKSDC.Notifications.RecipeCreated"));
   }
