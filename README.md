@@ -35,6 +35,32 @@ MK Shadowdark Crafting stores recipes in **Recipe Books** saved to world setting
 3. Restart Foundry VTT.
 4. Enable **MK Shadowdark Crafting** in your world.
 
+## Release Packaging
+
+Build Foundry release assets from the version in `module.json`:
+
+```powershell
+.\release.ps1
+```
+
+This creates:
+
+```text
+dist/v<version>/module.json
+dist/v<version>/mk-shadowdark-crafting.zip
+```
+
+To publish those assets to the matching GitHub release with the GitHub CLI:
+
+```powershell
+.\release.ps1 -Publish
+```
+
+Publishing creates the `v<version>` GitHub release if it does not exist. If the release already exists, the script replaces the attached `module.json` and `mk-shadowdark-crafting.zip` assets.
+
+Publishing requires `gh` to be installed and authenticated with `gh auth login`.
+Use `-Repository owner/repo` if the repository cannot be detected from `origin`.
+
 ## Opening The Crafting Panel
 
 You can open the Crafting Panel from:
