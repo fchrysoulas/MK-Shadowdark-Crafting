@@ -412,6 +412,52 @@ function Invoke-GitHubCli {
   }
 }
 
+function Test-GitHubReleaseExists {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$TagName,
+
+    [Parameter(Mandatory = $true)]
+    [string]$RepositorySlug
+  )
+
+  $output = @()
+  $exitCode = 0
+  $previousNativeCommandUseErrorActionPreference = $false
+  $hasNativeCommandUseErrorActionPreference = Test-Path Variable:\PSNativeCommandUseErrorActionPreference
+
+  try {
+    $ErrorActionPreference = "Continue"
+
+    if ($hasNativeCommandUseErrorActionPreference) {
+      $previousNativeCommandUseErrorActionPreference = $PSNativeCommandUseErrorActionPreference
+      $PSNativeCommandUseErrorActionPreference = $false
+    }
+
+    $output = & gh release view $TagName --repo $RepositorySlug 2>&1
+    $exitCode = $LASTEXITCODE
+  } finally {
+    if ($hasNativeCommandUseErrorActionPreference) {
+      $PSNativeCommandUseErrorActionPreference = $previousNativeCommandUseErrorActionPreference
+    }
+  }
+
+  if ($exitCode -eq 0) {
+    return $true
+  }
+
+  $message = (($output | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine).Trim()
+  if ($message -match "release not found") {
+    return $false
+  }
+
+  if ([string]::IsNullOrWhiteSpace($message)) {
+    $message = "exit code $exitCode"
+  }
+
+  throw "GitHub CLI command failed while checking release $RepositorySlug@$TagName`: $message"
+}
+
 $repoRoot = $PSScriptRoot
 $manifestPath = Join-Path $repoRoot "module.json"
 
@@ -543,11 +589,7 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
   throw "Publishing requires the GitHub CLI. Install gh and authenticate with gh auth login."
 }
 
-$releaseExists = $false
-& gh release view $tagName --repo $repositorySlug *> $null
-if ($LASTEXITCODE -eq 0) {
-  $releaseExists = $true
-}
+$releaseExists = Test-GitHubReleaseExists -TagName $tagName -RepositorySlug $repositorySlug
 
 if ($releaseExists) {
   Write-Host ""
