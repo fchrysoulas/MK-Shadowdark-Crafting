@@ -50,7 +50,7 @@ function Test-IsSubPath {
   return $fullPath.Equals($fullRoot, $comparison) -or $fullPath.StartsWith($rootPrefix, $comparison)
 }
 
-function Normalize-GitHubRepository {
+function ConvertTo-GitHubRepositorySlug {
   param(
     [AllowEmptyString()]
     [string]$Value
@@ -86,7 +86,7 @@ function Get-GitHubRepository {
     [string]$ExplicitRepository
   )
 
-  $normalized = Normalize-GitHubRepository -Value $ExplicitRepository
+  $normalized = ConvertTo-GitHubRepositorySlug -Value $ExplicitRepository
   if (-not [string]::IsNullOrWhiteSpace($normalized)) {
     return $normalized
   }
@@ -100,7 +100,7 @@ function Get-GitHubRepository {
     return ""
   }
 
-  return Normalize-GitHubRepository -Value $remote
+  return ConvertTo-GitHubRepositorySlug -Value $remote
 }
 
 function Set-JsonProperty {
@@ -124,7 +124,7 @@ function Set-JsonProperty {
   $property.Value = $Value
 }
 
-function Escape-JsonString {
+function ConvertTo-EscapedJsonString {
   param(
     [Parameter(Mandatory = $true)]
     [AllowEmptyString()]
@@ -221,7 +221,7 @@ function Write-JsonValue {
 
   if ($Value -is [string] -or $Value -is [char]) {
     [void]$Builder.Append('"')
-    [void]$Builder.Append((Escape-JsonString -Value ([string]$Value)))
+    [void]$Builder.Append((ConvertTo-EscapedJsonString -Value ([string]$Value)))
     [void]$Builder.Append('"')
     return
   }
@@ -262,7 +262,7 @@ function Write-JsonValue {
       $key = [string]$keys[$i]
       Write-JsonIndent -Builder $Builder -Depth ($Depth + 1) -IndentSize $IndentSize
       [void]$Builder.Append('"')
-      [void]$Builder.Append((Escape-JsonString -Value $key))
+      [void]$Builder.Append((ConvertTo-EscapedJsonString -Value $key))
       [void]$Builder.Append('": ')
       Write-JsonValue -Value $Value[$keys[$i]] -Builder $Builder -Depth ($Depth + 1) -IndentSize $IndentSize
 
@@ -323,7 +323,7 @@ function Write-JsonValue {
     $property = $properties[$i]
     Write-JsonIndent -Builder $Builder -Depth ($Depth + 1) -IndentSize $IndentSize
     [void]$Builder.Append('"')
-    [void]$Builder.Append((Escape-JsonString -Value $property.Name))
+    [void]$Builder.Append((ConvertTo-EscapedJsonString -Value $property.Name))
     [void]$Builder.Append('": ')
     Write-JsonValue -Value $property.Value -Builder $Builder -Depth ($Depth + 1) -IndentSize $IndentSize
 
