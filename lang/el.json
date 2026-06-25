@@ -222,6 +222,8 @@
   "MKSDC.App.Crafter": "Δημιουργός",
   "MKSDC.App.ResourceSources": "Πηγές Υλικών",
   "MKSDC.App.ResourceSourcesHint": "Οι επιλεγμένοι χαρακτήρες ελέγχονται και ξοδεύονται με αυτή τη σειρά.",
+  "MKSDC.App.SelectedSourceMaterials": "Υλικά επιλεγμένων πηγών",
+  "MKSDC.App.NoSelectedSourceMaterials": "Δεν βρέθηκαν basic materials.",
   "MKSDC.Chat.From": "από",
   "MKSDC.Outcome.Deconstructed": "Αποσυναρμολόγηση",
   "MKSDC.Deconstruct.Action": "Αποσυναρμολόγηση",

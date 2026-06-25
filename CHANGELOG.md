@@ -7,6 +7,7 @@ All notable changes to MK Shadowdark Crafting are documented here.
 - Validated Foundry VTT v13 scene control integration by supporting the v13 `Record<string, SceneControl>` control shape while keeping the v12 array shape.
 - Added v13 ApplicationV2 actor sheet header-control support for the Crafting button.
 - Updated manifest compatibility to verify and allow Foundry VTT v13.
+- Resource Sources now show aggregated Basic material totals needed by active recipes for the selected scene sources instead of per-character source text on recipe rows.
 
 ## 0.4.0
 

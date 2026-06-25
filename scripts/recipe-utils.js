@@ -507,7 +507,6 @@ export function checkRecipeRequirements(actor, recipe, { resourceActors = null }
         ownedQty,
         missingQty: Math.max(0, material.qty - ownedQty),
         sources: owned.sources,
-        sourceSummary: owned.sources.map((source) => `${source.actorName} ${source.qty}`).join(", "),
         ok
       };
       materialRows.push(row);

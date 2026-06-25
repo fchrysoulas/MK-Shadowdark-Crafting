@@ -222,6 +222,8 @@
   "MKSDC.App.Crafter": "Crafter",
   "MKSDC.App.ResourceSources": "Resource Sources",
   "MKSDC.App.ResourceSourcesHint": "Checked actors are searched and consumed in this order.",
+  "MKSDC.App.SelectedSourceMaterials": "Selected Source Materials",
+  "MKSDC.App.NoSelectedSourceMaterials": "No basic materials found.",
   "MKSDC.Chat.From": "from",
   "MKSDC.Outcome.Deconstructed": "Deconstructed",
   "MKSDC.Deconstruct.Action": "Deconstruct",

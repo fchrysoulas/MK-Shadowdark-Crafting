@@ -190,6 +190,38 @@ export function getOwnedMaterialQuantityForActors(resourceActors, material) {
   };
 }
 
+export function getBasicMaterialTotalsForActors(resourceActors, materials = []) {
+  const map = new Map();
+  const seen = new Set();
+
+  for (const material of materials) {
+    if (!material?.name) continue;
+
+    const type = resolveItemType(material.type || "Basic", "Basic");
+    if (normalizeName(type) !== "basic") continue;
+
+    const key = `${normalizeName(material.name)}|${normalizeName(type)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const owned = getOwnedMaterialQuantityForActors(resourceActors, material);
+    if (owned.qty <= 0) continue;
+
+    const current = map.get(key) || {
+      name: String(material.name || "").trim(),
+      type,
+      img: material.img || "icons/svg/item-bag.svg",
+      qty: 0
+    };
+    current.qty += owned.qty;
+    map.set(key, current);
+  }
+
+  return Array.from(map.values()).sort((a, b) => {
+    return String(a.name).localeCompare(String(b.name), game.i18n.lang, { sensitivity: "base", numeric: true });
+  });
+}
+
 export function findOwnedItemByNameForActors(resourceActors, name) {
   for (const actor of normalizeResourceActors(null, resourceActors)) {
     const item = findOwnedItemByName(actor, name);

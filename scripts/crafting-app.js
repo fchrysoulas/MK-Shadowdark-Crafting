@@ -2,7 +2,7 @@ import { MODULE_ID, TEMPLATES } from "./constants.js";
 import { setting } from "./settings.js";
 import { CraftingEngine } from "./crafting-engine.js";
 import { deconstructItem, getInventoryDeconstructionEntriesForActor } from "./deconstruction-engine.js";
-import { getAvailableResourceActors } from "./item-utils.js";
+import { getAvailableResourceActors, getBasicMaterialTotalsForActors } from "./item-utils.js";
 import { checkRecipeRequirements, deleteRecipe, ensureDefaultRecipeBook, getRecipeById, getRecipeEntriesForActor } from "./recipe-utils.js";
 import { RecipeEditor } from "./recipe-editor.js";
 import { openManageRecipeBooks } from "./recipe-books.js";
@@ -198,6 +198,10 @@ export class CraftingApp extends Application {
     const actor = this.actor;
     const resourceState = this._getResourceActorState();
     const recipeEntries = actor ? getRecipeEntriesForActor(actor) : [];
+    const neededMaterials = recipeEntries.flatMap((entry) => {
+      return (entry.recipe?.materialGroups ?? []).flatMap((group) => group.alternatives ?? []);
+    });
+    const resourceMaterialTotals = getBasicMaterialTotalsForActors(resourceState.actors, neededMaterials);
 
     const recipes = recipeEntries.map((entry) => {
       const recipe = entry.recipe;
@@ -319,6 +323,8 @@ export class CraftingApp extends Application {
       resourceActors: resourceState.rows,
       hasResourceActors: resourceState.rows.length > 0,
       hasSelectedResourceActors: resourceState.actors.length > 0,
+      resourceMaterialTotals,
+      hasResourceMaterialTotals: resourceMaterialTotals.length > 0,
       mode: this.mode,
       isCraftMode: this.mode !== "deconstruct",
       isDeconstructMode: this.mode === "deconstruct",

@@ -1696,6 +1696,64 @@
   gap: 3px;
 }
 
+.mk-sdc-resource-materials {
+  display: grid;
+  gap: 4px;
+  margin-top: 5px;
+  padding: 5px;
+  border: 1px solid rgba(70, 45, 20, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.mk-sdc-resource-materials header {
+  font-size: 0.69rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}
+
+.mk-sdc-resource-materials ul {
+  display: grid;
+  gap: 2px;
+  max-height: 140px;
+  overflow: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mk-sdc-resource-materials li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+.mk-sdc-resource-materials img {
+  width: 16px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+
+.mk-sdc-resource-materials span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mk-sdc-resource-materials p {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  opacity: 0.68;
+}
+
 .mk-sdc-resource-row {
   display: grid;
   grid-template-columns: 14px 20px 24px minmax(0, 1fr);

@@ -106,6 +106,25 @@
                   </label>
                 {{/each}}
               </div>
+
+              {{#if hasSelectedResourceActors}}
+                <div class="mk-sdc-resource-materials">
+                  <header>{{localize "MKSDC.App.SelectedSourceMaterials"}}</header>
+                  {{#if hasResourceMaterialTotals}}
+                    <ul>
+                      {{#each resourceMaterialTotals as |material|}}
+                        <li>
+                          <img src="{{material.img}}" alt="{{material.name}}">
+                          <span>{{material.name}}</span>
+                          <strong>x{{material.qty}}</strong>
+                        </li>
+                      {{/each}}
+                    </ul>
+                  {{else}}
+                    <p>{{localize "MKSDC.App.NoSelectedSourceMaterials"}}</p>
+                  {{/if}}
+                </div>
+              {{/if}}
             </section>
           {{/if}}
         </aside>
@@ -208,7 +227,6 @@
                                   <img class="mk-sdc-material-icon" src="{{material.img}}" alt="{{material.name}}">
                                   <span>{{material.name}}</span>
                                   <strong>{{material.ownedQty}} / {{material.qty}}</strong>
-                                  {{#if material.sourceSummary}}<small class="mk-sdc-material-sources">{{material.sourceSummary}}</small>{{/if}}
                                 </span>
                               {{/each}}
                             </li>
@@ -294,7 +312,6 @@
                                   <img class="mk-sdc-material-icon mk-sdc-material-icon--inline" src="{{material.img}}" alt="{{material.name}}">
                                   <span class="mk-sdc-inline-material-name">{{material.name}}</span>
                                   <span class="mk-sdc-material-count">{{material.ownedQty}} / {{material.qty}}</span>
-                                  {{#if material.sourceSummary}}<span class="mk-sdc-material-sources mk-sdc-material-sources--inline">{{material.sourceSummary}}</span>{{/if}}
                                 </span>
                               {{/each}}
                             </span>
