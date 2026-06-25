@@ -28,13 +28,6 @@ MK Shadowdark Crafting stores recipes in **Recipe Books** saved to world setting
 - Safe migration from older item-based recipe storage
 - English and Greek localization
 
-## Installation
-
-1. Unzip `mk-shadowdark-crafting.zip`.
-2. Place the `mk-shadowdark-crafting` folder in your Foundry `Data/modules/` folder.
-3. Restart Foundry VTT.
-4. Enable **MK Shadowdark Crafting** in your world.
-
 ## Opening The Crafting Panel
 
 You can open the Crafting Panel from:

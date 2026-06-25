@@ -1,0 +1,3 @@
+dist/
+*.ps1
+!release.ps1
