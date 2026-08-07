@@ -6,9 +6,9 @@ MK Shadowdark Crafting stores recipes in **Recipe Books** saved to world setting
 
 ## Compatibility
 
-- Foundry VTT: v12-v13 verified
+- Foundry VTT: v13
 - Shadowdark RPG: 3.5.0 or later
-- Current module version: 0.4.1
+- Current module version: 0.4.2
 
 ## Features
 

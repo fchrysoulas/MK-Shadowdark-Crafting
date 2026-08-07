@@ -2,6 +2,10 @@
 
 All notable changes to MK Shadowdark Crafting are documented here.
 
+## 0.4.2
+
+- Removed Foundry VTT v12 compatibility and now require Foundry VTT v13.
+
 ## 0.4.1
 
 - Validated Foundry VTT v13 scene control integration by supporting the v13 `Record<string, SceneControl>` control shape while keeping the v12 array shape.
