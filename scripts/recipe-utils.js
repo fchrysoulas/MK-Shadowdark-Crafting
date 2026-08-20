@@ -4,6 +4,7 @@ import { findOwnedItemByNameForActors, getGoldInfoForActors, normalizeResourceAc
 import { getMaterialAvailability, planMaterialGroups } from "./material-allocation.js";
 
 const VALID_ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
+let recipeBookMutationQueue = Promise.resolve();
 
 function randomId(prefix = "recipe") {
   const id = foundry.utils.randomID?.(16) || crypto.randomUUID?.() || `${Date.now()}${Math.floor(Math.random() * 9999)}`;
@@ -207,32 +208,36 @@ function parseMaybeJson(value) {
   }
 }
 
+/**
+ * Keep only fields needed to recreate a normal crafted Item. Recipe books are
+ * stored in client-readable world settings, so arbitrary flags, ownership,
+ * folder data, and third-party metadata must not be copied into snapshots.
+ */
 export function sanitizeOutputItemData(data, recipe = {}) {
   const parsed = parseMaybeJson(data);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
 
-  const itemData = foundry.utils.deepClone(parsed);
-  delete itemData._id;
-  delete itemData.folder;
-  delete itemData.ownership;
-  delete itemData.sort;
+  const system = parsed.system && typeof parsed.system === "object"
+    ? foundry.utils.deepClone(parsed.system)
+    : {};
+  const effects = Array.isArray(parsed.effects)
+    ? foundry.utils.deepClone(parsed.effects).map((effect) => {
+      const safe = effect && typeof effect === "object" ? foundry.utils.deepClone(effect) : {};
+      delete safe._id;
+      delete safe.origin;
+      delete safe.flags;
+      return safe;
+    })
+    : [];
 
-  itemData.name = String(itemData.name || recipe.outputName || "New Crafted Item").trim() || "New Crafted Item";
-  itemData.type = resolveItemType(itemData.type || recipe.outputType || "Basic", "Basic");
-  itemData.img = String(itemData.img || recipe.outputImg || "icons/svg/item-bag.svg").trim();
-  itemData.system = itemData.system && typeof itemData.system === "object" ? itemData.system : {};
+  const itemData = {
+    name: String(parsed.name || recipe.outputName || "New Crafted Item").trim() || "New Crafted Item",
+    type: resolveItemType(parsed.type || recipe.outputType || "Basic", "Basic"),
+    img: String(parsed.img || recipe.outputImg || "icons/svg/item-bag.svg").trim(),
+    system
+  };
 
-  if (itemData.flags?.[MODULE_ID]) {
-    const moduleFlags = foundry.utils.deepClone(itemData.flags[MODULE_ID]);
-    delete moduleFlags[FLAGS.IS_RECIPE];
-    delete moduleFlags[FLAGS.RECIPE];
-    delete moduleFlags[FLAGS.RECIPE_BOOK_ID];
-
-    if (Object.keys(moduleFlags).length) itemData.flags[MODULE_ID] = moduleFlags;
-    else delete itemData.flags[MODULE_ID];
-  }
-
-  if (itemData.flags && !Object.keys(itemData.flags).length) delete itemData.flags;
+  if (effects.length) itemData.effects = effects;
   return itemData;
 }
 
@@ -248,61 +253,134 @@ async function setRecipeBookSetting(books) {
   await game.settings.set(MODULE_ID, "recipeBooks", books || {});
 }
 
+function booksEqual(a, b) {
+  try {
+    return JSON.stringify(a || {}) === JSON.stringify(b || {});
+  } catch (_error) {
+    return false;
+  }
+}
+
+/**
+ * Serialize recipe-book writes from this client and re-read the latest world
+ * setting immediately before each mutation. This does not claim database CAS,
+ * but it prevents same-client lost updates and narrows multi-GM stale-write
+ * windows to the final Foundry setting write itself.
+ */
+export async function mutateRecipeBooks(mutator) {
+  if (typeof mutator !== "function") throw new TypeError("mutateRecipeBooks requires a mutator function");
+
+  const run = async () => {
+    const latest = getRecipeBookSetting();
+    const draft = foundry.utils.deepClone(latest);
+    const result = await mutator(draft, latest);
+
+    if (result?.cancel === true) return { books: latest, changed: false, result: result.value };
+    if (booksEqual(latest, draft)) return { books: latest, changed: false, result: result?.value ?? result };
+
+    await setRecipeBookSetting(draft);
+    return { books: draft, changed: true, result: result?.value ?? result };
+  };
+
+  const task = recipeBookMutationQueue.then(run, run);
+  recipeBookMutationQueue = task.then(() => undefined, () => undefined);
+  return task;
+}
+
 export function getRecipeBooks() {
   return getRecipeBookSetting();
 }
 
 export async function setRecipeBooks(books) {
-  await setRecipeBookSetting(books);
+  const replacement = foundry.utils.deepClone(books || {});
+  const mutation = await mutateRecipeBooks((draft) => {
+    for (const key of Object.keys(draft)) delete draft[key];
+    Object.assign(draft, replacement);
+  });
+  return mutation.books;
 }
 
 export function getActiveRecipeBookIds() {
   const books = getRecipeBooks();
-  let ids = [];
-  try {
-    ids = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
-  } catch (_error) {
-    ids = [];
-  }
-
   const activeFromBooks = Object.entries(books)
-    .filter(([, book]) => book.active)
+    .filter(([, book]) => Boolean(book?.active))
     .map(([id]) => id);
 
-  return Array.from(new Set([...ids, ...activeFromBooks].filter((id) => books[id])));
+  // Book.active is authoritative. The separate setting is legacy compatibility
+  // only and is read as a fallback for worlds created before book.active existed.
+  if (activeFromBooks.length) return activeFromBooks;
+
+  try {
+    const legacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
+    return Array.from(new Set(legacyIds.filter((id) => books[id])));
+  } catch (_error) {
+    return [];
+  }
 }
 
 export async function setActiveRecipeBookIds(ids = []) {
   const unique = Array.from(new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean)));
-  await game.settings.set(MODULE_ID, "activeRecipeBookIds", unique);
+  const selected = new Set(unique);
 
-  const books = getRecipeBooks();
-  for (const [id, book] of Object.entries(books)) {
-    book.active = unique.includes(id);
+  await mutateRecipeBooks((books) => {
+    for (const [id, book] of Object.entries(books)) {
+      const next = selected.has(id);
+      if (Boolean(book.active) === next) continue;
+      book.active = next;
+      book.updatedAt = nowIso();
+    }
+  });
+
+  // Keep the old setting mirrored for macros/older integrations, but runtime
+  // behavior no longer depends on it, so temporary mirror failure cannot make
+  // active state diverge inside this module.
+  try {
+    const current = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
+    if (JSON.stringify(current) !== JSON.stringify(unique)) {
+      await game.settings.set(MODULE_ID, "activeRecipeBookIds", unique);
+    }
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not mirror legacy activeRecipeBookIds`, error);
   }
-  await setRecipeBookSetting(books);
+
   return unique;
 }
 
 export async function ensureDefaultRecipeBook() {
-  const books = getRecipeBooks();
-  if (!books[DEFAULT_BOOK_ID]) {
-    books[DEFAULT_BOOK_ID] = {
-      id: DEFAULT_BOOK_ID,
-      name: game.i18n.localize("MKSDC.RecipeBooks.WorldRecipesName") || "World Recipes",
-      active: true,
-      recipes: [],
-      recipeCount: 0,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      schemaVersion: 2
-    };
-    await setRecipeBookSetting(books);
-  }
+  if (!game.user?.isGM) return getRecipeBooks()[DEFAULT_BOOK_ID] ?? null;
+
+  await mutateRecipeBooks((books) => {
+    if (!books[DEFAULT_BOOK_ID]) {
+      books[DEFAULT_BOOK_ID] = {
+        id: DEFAULT_BOOK_ID,
+        name: game.i18n.localize("MKSDC.RecipeBooks.WorldRecipesName") || "World Recipes",
+        active: true,
+        recipes: [],
+        recipeCount: 0,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        schemaVersion: 2
+      };
+    }
+
+    const hasActive = Object.values(books).some((book) => Boolean(book?.active));
+    if (!hasActive && books[DEFAULT_BOOK_ID]) {
+      books[DEFAULT_BOOK_ID].active = true;
+      books[DEFAULT_BOOK_ID].updatedAt = nowIso();
+    }
+  });
 
   const activeIds = getActiveRecipeBookIds();
-  if (!activeIds.length) await setActiveRecipeBookIds([DEFAULT_BOOK_ID]);
-  return getRecipeBooks()[DEFAULT_BOOK_ID];
+  try {
+    const legacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
+    if (JSON.stringify(legacyIds) !== JSON.stringify(activeIds)) {
+      await game.settings.set(MODULE_ID, "activeRecipeBookIds", activeIds);
+    }
+  } catch (error) {
+    console.warn(`${MODULE_ID} | Could not migrate legacy active recipe IDs`, error);
+  }
+
+  return getRecipeBooks()[DEFAULT_BOOK_ID] ?? null;
 }
 
 export function getEditableRecipeBookId() {
@@ -434,31 +512,32 @@ export async function upsertRecipe(recipeData, { bookId = null } = {}) {
   }
 
   await ensureDefaultRecipeBook();
-  const books = getRecipeBooks();
   const targetBookId = String(bookId || recipeData.bookId || getEditableRecipeBookId() || DEFAULT_BOOK_ID).trim();
-
-  if (!books[targetBookId]) {
-    books[targetBookId] = {
-      id: targetBookId,
-      name: targetBookId === DEFAULT_BOOK_ID ? game.i18n.localize("MKSDC.RecipeBooks.WorldRecipesName") : targetBookId,
-      active: true,
-      recipes: [],
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      schemaVersion: 2
-    };
-  }
-
   const recipe = sanitizeRecipeData(recipeData, { bookId: targetBookId, id: recipeData.id });
-  const list = Array.isArray(books[targetBookId].recipes) ? books[targetBookId].recipes : [];
-  const index = list.findIndex((entry) => String(entry.id) === String(recipe.id));
-  if (index >= 0) list[index] = recipe;
-  else list.push(recipe);
 
-  books[targetBookId].recipes = list.sort((a, b) => String(a.outputName || "").localeCompare(String(b.outputName || "")));
-  books[targetBookId].recipeCount = books[targetBookId].recipes.length;
-  books[targetBookId].updatedAt = nowIso();
-  await setRecipeBookSetting(books);
+  await mutateRecipeBooks((books) => {
+    if (!books[targetBookId]) {
+      books[targetBookId] = {
+        id: targetBookId,
+        name: targetBookId === DEFAULT_BOOK_ID ? game.i18n.localize("MKSDC.RecipeBooks.WorldRecipesName") : targetBookId,
+        active: true,
+        recipes: [],
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        schemaVersion: 2
+      };
+    }
+
+    const list = Array.isArray(books[targetBookId].recipes) ? books[targetBookId].recipes : [];
+    const index = list.findIndex((entry) => String(entry.id) === String(recipe.id));
+    if (index >= 0) list[index] = recipe;
+    else list.push(recipe);
+
+    books[targetBookId].recipes = list.sort((a, b) => String(a.outputName || "").localeCompare(String(b.outputName || "")));
+    books[targetBookId].recipeCount = books[targetBookId].recipes.length;
+    books[targetBookId].updatedAt = nowIso();
+  });
+
   return recipe;
 }
 
@@ -470,24 +549,27 @@ export async function deleteRecipe(recipeId, options = {}) {
 
   const { id, bookId } = parseRecipeReference(recipeId, options);
   const notify = options.notify !== false;
-  const books = getRecipeBooks();
-  if (bookId && !books[bookId]) {
-    if (notify) ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
-    return false;
-  }
+  let deleted = false;
 
-  const bookEntries = bookId ? [[bookId, books[bookId]]] : Object.entries(books);
+  await mutateRecipeBooks((books) => {
+    if (bookId && !books[bookId]) return { cancel: true, value: false };
+    const bookEntries = bookId ? [[bookId, books[bookId]]] : Object.entries(books);
 
-  for (const [entryBookId, book] of bookEntries) {
-    const list = Array.isArray(book.recipes) ? book.recipes : [];
-    const next = list.filter((recipe) => String(recipe.id) !== id);
-    if (next.length === list.length) continue;
+    for (const [entryBookId, book] of bookEntries) {
+      const list = Array.isArray(book.recipes) ? book.recipes : [];
+      const next = list.filter((recipe) => String(recipe.id) !== id);
+      if (next.length === list.length) continue;
 
-    book.recipes = next;
-    book.recipeCount = next.length;
-    book.updatedAt = nowIso();
-    books[entryBookId] = book;
-    await setRecipeBookSetting(books);
+      book.recipes = next;
+      book.recipeCount = next.length;
+      book.updatedAt = nowIso();
+      books[entryBookId] = book;
+      deleted = true;
+      break;
+    }
+  });
+
+  if (deleted) {
     if (notify) ui.notifications.info(game.i18n.localize("MKSDC.Notifications.RecipeDeleted"));
     return true;
   }
