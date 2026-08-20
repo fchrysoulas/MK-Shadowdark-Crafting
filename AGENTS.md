@@ -145,6 +145,20 @@ Key invariants:
 2. **Atomicity:** internal failures leave inventory/currency in the pre-operation state.
 3. **Conservation:** deconstruction cannot create net resources beyond the configured refund pool.
 
+## Pull Requests and CI Processing
+
+When the user asks to proceed with repository issues or an implementation queue, treat the corresponding pull-request and CI workflow as part of completing that work unless the user explicitly asks to stop before merge.
+
+- Open a PR when one is required to trigger, expose, or inspect CI/check jobs.
+- Inspect the PR's checks and workflow jobs rather than stopping after branch commits.
+- If a required job fails, inspect the failure, fix the branch, and re-run or allow the updated PR to re-run the checks.
+- Merge the PR once the requested work is complete and the required checks are successful, unless there is a review blocker or the user explicitly asks to leave it unmerged.
+- After merge, verify the merge state and update/close the related issues when their acceptance criteria are actually satisfied.
+- Do not claim that CI passed when GitHub does not expose a successful check/run result.
+- Keep unrelated work in separate branches/PRs when it would make review or rollback harder.
+
+This is standing repository-level authorization from the project owner to open and merge PRs as needed for processing requested issue work and CI. It does not authorize unrelated repository changes or bypass explicit stop/review instructions from the user.
+
 ## Release and Versioning
 
 When preparing a release:
