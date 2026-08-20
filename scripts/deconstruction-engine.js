@@ -1,8 +1,17 @@
 import { FLAGS, MODULE_ID } from "./constants.js";
 import { setting } from "./settings.js";
 import { postCraftingChatCard } from "./chat.js";
-import { addOwnedItemQuantity, consumeOwnedItemDocument, getItemQuantity, normalizeName } from "./item-utils.js";
+import {
+  addOwnedItemQuantity,
+  consumeOwnedItemDocument,
+  findOwnedItemByName,
+  findOwnedItemForMaterial,
+  getItemQuantity,
+  getItemQuantityPath,
+  normalizeName
+} from "./item-utils.js";
 import { getRecipeDeconstructMaterials, getRecipeEntriesForActor, hasRecipeDeconstruction, isRecipeItem, sanitizeRecipeData } from "./recipe-utils.js";
+import { aggregateRefundMaterials, normalizeRecoverableState, takeOneRefund } from "./deconstruction-refund.js";
 
 function getCraftedFlag(item) {
   return item?.getFlag?.(MODULE_ID, FLAGS.CRAFTED) ?? null;
@@ -10,6 +19,71 @@ function getCraftedFlag(item) {
 
 function sameText(a, b) {
   return normalizeName(a) === normalizeName(b);
+}
+
+function snapshotItem(item) {
+  if (!item) return null;
+  const crafted = getCraftedFlag(item);
+  return {
+    id: item.id,
+    qty: getItemQuantity(item),
+    quantityPath: getItemQuantityPath(item),
+    source: item.toObject(),
+    hadCraftedFlag: crafted !== null && crafted !== undefined,
+    crafted: crafted ? foundry.utils.deepClone(crafted) : null
+  };
+}
+
+function findActorItem(actor, itemId) {
+  return actor?.items?.get?.(itemId) ?? actor?.items?.find?.((item) => item.id === itemId) ?? null;
+}
+
+async function restoreItemSnapshot(actor, snapshot) {
+  if (!actor || !snapshot) return;
+  const current = findActorItem(actor, snapshot.id);
+
+  if (!current) {
+    const source = foundry.utils.deepClone(snapshot.source);
+    await actor.createEmbeddedDocuments("Item", [source], { keepId: true });
+    return;
+  }
+
+  if (snapshot.quantityPath) {
+    await current.update({ [snapshot.quantityPath]: snapshot.qty });
+  }
+
+  if (snapshot.hadCraftedFlag) {
+    await current.setFlag(MODULE_ID, FLAGS.CRAFTED, foundry.utils.deepClone(snapshot.crafted));
+  } else if (getCraftedFlag(current) !== null) {
+    await current.unsetFlag(MODULE_ID, FLAGS.CRAFTED);
+  }
+}
+
+async function rollbackDeconstruction(actor, sourceSnapshot, refundOperations = []) {
+  const errors = [];
+
+  for (const operation of [...refundOperations].reverse()) {
+    try {
+      if (operation.createdItemId) {
+        const created = findActorItem(actor, operation.createdItemId);
+        if (created) await actor.deleteEmbeddedDocuments("Item", [created.id]);
+      } else if (operation.snapshot) {
+        await restoreItemSnapshot(actor, operation.snapshot);
+      }
+    } catch (error) {
+      errors.push(error);
+      console.error(`${MODULE_ID} | Failed to roll back recovered material`, error);
+    }
+  }
+
+  try {
+    await restoreItemSnapshot(actor, sourceSnapshot);
+  } catch (error) {
+    errors.push(error);
+    console.error(`${MODULE_ID} | Failed to roll back deconstructed source item`, error);
+  }
+
+  return { ok: errors.length === 0, errors };
 }
 
 export function recipeMatchesItem(recipe, item) {
@@ -53,39 +127,19 @@ async function findRecipeForOutputItem(item) {
   return findRecipeForOutputItemSync(item);
 }
 
-function aggregateMaterials(materials = []) {
-  const map = new Map();
-
-  for (const material of materials) {
-    const qty = Math.max(0, Number(material?.qty || 0));
-    const name = String(material?.name || "").trim();
-    if (!name || !qty) continue;
-
-    const uuid = String(material?.uuid || "").trim();
-    const type = String(material?.type || "").trim();
-    const img = String(material?.img || "icons/svg/item-bag.svg").trim();
-    const key = uuid || `${name.toLocaleLowerCase()}|${type.toLocaleLowerCase()}`;
-    const current = map.get(key) || { name, uuid, type, img, qty: 0 };
-    current.qty += qty;
-    map.set(key, current);
-  }
-
-  return Array.from(map.values());
-}
-
 function getRecipeDefaultMaterials(recipe) {
   const choices = [];
   for (const group of recipe?.materialGroups ?? []) {
     const material = group?.alternatives?.[0];
     if (material) choices.push(material);
   }
-  return aggregateMaterials(choices);
+  return aggregateRefundMaterials(choices);
 }
 
 function getActualConsumedMaterials(item, recipe) {
   const crafted = getCraftedFlag(item);
   if (Array.isArray(crafted?.consumedMaterials) && crafted.consumedMaterials.length) {
-    return aggregateMaterials(crafted.consumedMaterials.filter((material) => material?.kind !== "gold"));
+    return aggregateRefundMaterials(crafted.consumedMaterials.filter((material) => material?.kind !== "gold"));
   }
 
   return getRecipeDefaultMaterials(recipe);
@@ -97,17 +151,84 @@ function getCreatedQty(item, recipe) {
   return Math.max(1, Number.isFinite(createdQty) ? createdQty : 1);
 }
 
-function getRefundMaterials(item, recipe) {
-  if (recipe?.deconstructGenerated) {
-    const createdQty = getCreatedQty(item, recipe);
-    const consumedMaterials = getActualConsumedMaterials(item, recipe);
-    return aggregateMaterials(consumedMaterials.map((material) => ({
+function getConservativeGeneratedRefund(recipe) {
+  const createdQty = Math.max(1, Number(recipe?.outputQty || 1));
+  return aggregateRefundMaterials(getRecipeDefaultMaterials(recipe).map((material) => {
+    const totalRecoverable = Math.ceil(Math.max(0, Number(material.qty || 0)) / 2);
+    return {
       ...material,
-      qty: Math.ceil((Math.max(0, Number(material.qty || 0)) / createdQty) / 2)
-    })));
+      qty: Math.floor(totalRecoverable / createdQty)
+    };
+  }));
+}
+
+function getGeneratedRefundPlan(item, recipe) {
+  const crafted = getCraftedFlag(item);
+
+  // Only items carrying crafted batch metadata can safely consume a shared
+  // batch refund pool. Recipe-matched legacy/untracked items use a conservative
+  // per-item fallback that can never exceed half the recipe input across all
+  // outputs from one recipe execution.
+  if (!crafted) {
+    return {
+      generated: true,
+      tracked: false,
+      refundMaterials: getConservativeGeneratedRefund(recipe),
+      nextState: null
+    };
   }
 
-  return getRecipeDeconstructMaterials(recipe);
+  const state = normalizeRecoverableState({
+    storedPool: crafted.recoverableMaterials,
+    storedRemainingQty: crafted.remainingQty,
+    consumedMaterials: getActualConsumedMaterials(item, recipe),
+    createdQty: getCreatedQty(item, recipe),
+    currentQty: getItemQuantity(item)
+  });
+
+  const taken = takeOneRefund(state);
+  return {
+    generated: true,
+    tracked: true,
+    refundMaterials: taken.refundMaterials,
+    nextState: taken.nextState
+  };
+}
+
+function getRefundPlan(item, recipe) {
+  if (recipe?.deconstructGenerated) return getGeneratedRefundPlan(item, recipe);
+
+  return {
+    generated: false,
+    tracked: false,
+    refundMaterials: getRecipeDeconstructMaterials(recipe),
+    nextState: null
+  };
+}
+
+function getRefundMaterials(item, recipe) {
+  return getRefundPlan(item, recipe).refundMaterials;
+}
+
+async function persistGeneratedRefundState(item, recipe, plan) {
+  if (!plan?.tracked || !plan.nextState) return;
+
+  const actor = item?.parent;
+  const remainingItem = findActorItem(actor, item.id);
+  if (!remainingItem) return;
+
+  const crafted = getCraftedFlag(remainingItem) || getCraftedFlag(item) || {};
+  const nextCrafted = {
+    ...crafted,
+    recipeId: crafted.recipeId || recipe?.id || "",
+    recipeBookId: crafted.recipeBookId || recipe?.bookId || "",
+    recipeName: crafted.recipeName || recipe?.outputName || remainingItem.name || "",
+    createdQty: Math.max(1, Number(crafted.createdQty || recipe?.outputQty || 1)),
+    remainingQty: Math.max(0, Number(plan.nextState.remainingQty) || 0),
+    recoverableMaterials: aggregateRefundMaterials(plan.nextState.recoverableMaterials || [])
+  };
+
+  await remainingItem.setFlag(MODULE_ID, FLAGS.CRAFTED, nextCrafted);
 }
 
 function escapeHtml(value) {
@@ -133,8 +254,6 @@ async function confirmDeconstruction(item, recipe, refundMaterials) {
     defaultYes: false
   });
 }
-
-
 
 export function getDeconstructionPreview(item) {
   if (!item || isRecipeItem(item)) return null;
@@ -232,11 +351,11 @@ export function findOwnedDeconstructableItem(actor, referenceItem) {
 
   const byUuid = String(referenceItem.uuid || "").trim();
   if (byUuid) {
-    const matchedByUuid = actor.items.find((item) => item.uuid === byUuid && canDeconstructItem(item));
+    const matchedByUuid = actor.items.find((owned) => owned.uuid === byUuid && canDeconstructItem(owned));
     if (matchedByUuid) return matchedByUuid;
   }
 
-  return actor.items.find((item) => itemsMatchForDeconstruction(referenceItem, item) && canDeconstructItem(item)) ?? null;
+  return actor.items.find((owned) => itemsMatchForDeconstruction(referenceItem, owned) && canDeconstructItem(owned)) ?? null;
 }
 
 export function canDeconstructItem(item) {
@@ -274,7 +393,10 @@ export async function deconstructItem(actor, item, options = {}) {
     return null;
   }
 
-  const refundMaterials = getRefundMaterials(item, recipe);
+  // Compute once so confirmation, execution, and persisted batch state all use
+  // the same finite refund allocation.
+  const refundPlan = getRefundPlan(item, recipe);
+  const refundMaterials = refundPlan.refundMaterials;
   if (!options.skipConfirm) {
     const confirmed = await confirmDeconstruction(item, recipe, refundMaterials);
     if (!confirmed) return null;
@@ -285,23 +407,44 @@ export async function deconstructItem(actor, item, options = {}) {
     img: item.img,
     qty: 1
   };
+  const sourceSnapshot = snapshotItem(item);
+  const refundOperations = [];
+  const recovered = [];
 
-  const consumeResult = await consumeOwnedItemDocument(item, 1);
-  if (!consumeResult?.ok) {
+  try {
+    const consumeResult = await consumeOwnedItemDocument(item, 1);
+    if (!consumeResult?.ok) {
+      throw new Error(`Could not remove deconstructed item: ${consumeResult?.reason || "unknown"}`);
+    }
+
+    await persistGeneratedRefundState(item, recipe, refundPlan);
+
+    for (const material of refundMaterials) {
+      const existing = findOwnedItemForMaterial(actor, material) || findOwnedItemByName(actor, material.name);
+      const existingSnapshot = snapshotItem(existing);
+      const recoveredItem = await addOwnedItemQuantity(actor, material, material.qty);
+
+      refundOperations.push({
+        snapshot: existingSnapshot,
+        createdItemId: recoveredItem && (!existing || recoveredItem.id !== existing.id) ? recoveredItem.id : null
+      });
+
+      recovered.push({
+        ...material,
+        actorId: actor.uuid || actor.id,
+        actorName: actor.name || "",
+        actorImg: actor.img || "icons/svg/mystery-man.svg",
+        item: recoveredItem
+      });
+    }
+  } catch (error) {
+    console.error(`${MODULE_ID} | Deconstruction transaction failed`, error);
+    const rollback = await rollbackDeconstruction(actor, sourceSnapshot, refundOperations);
+    if (!rollback.ok) {
+      console.error(`${MODULE_ID} | Deconstruction rollback was incomplete`, rollback.errors);
+    }
     ui.notifications.warn(game.i18n.localize("MKSDC.Deconstruct.CouldNotRemoveItem"));
     return null;
-  }
-
-  const recovered = [];
-  for (const material of refundMaterials) {
-    const recoveredItem = await addOwnedItemQuantity(actor, material, material.qty);
-    recovered.push({
-      ...material,
-      actorId: actor.uuid || actor.id,
-      actorName: actor.name || "",
-      actorImg: actor.img || "icons/svg/mystery-man.svg",
-      item: recoveredItem
-    });
   }
 
   await postCraftingChatCard(actor, {

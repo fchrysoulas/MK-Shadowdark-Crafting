@@ -18,6 +18,7 @@ export const ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 
 export const DEFAULT_BOOK_ID = "world-recipes";
 
+// Legacy fallback only. Runtime system-declared item types should be preferred.
 export const SHADOWDARK_V350_ITEM_TYPES = [
   "Ancestry",
   "Armor",
@@ -33,7 +34,6 @@ export const SHADOWDARK_V350_ITEM_TYPES = [
   "NPC Attack",
   "NPC Feature",
   "NPC Special Attack",
-  "NPC Spell",
   "Patron",
   "Potion",
   "Property",
@@ -74,7 +74,6 @@ export const ITEM_TYPE_ALIASES = {
   "npc attack": "NPC Attack",
   "npc feature": "NPC Feature",
   "npc special attack": "NPC Special Attack",
-  "npc spell": "NPC Spell",
   patron: "Patron",
   potion: "Potion",
   potions: "Potion",

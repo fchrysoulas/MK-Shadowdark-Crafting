@@ -44,15 +44,15 @@ export function getItemQuantityPath(item) {
   return getSystemPath(item, candidates).path;
 }
 
-export function findOwnedItemByName(actor, name) {
-  if (!actor || !name) return null;
+export function findOwnedItemsByName(actor, name) {
+  if (!actor || !name) return [];
   const target = normalizeName(name);
-  if (!target) return null;
+  if (!target) return [];
+  return Array.from(actor.items ?? []).filter((item) => normalizeName(item.name) === target);
+}
 
-  const exact = actor.items?.find((item) => normalizeName(item.name) === target);
-  if (exact) return exact;
-
-  return null;
+export function findOwnedItemByName(actor, name) {
+  return findOwnedItemsByName(actor, name)[0] ?? null;
 }
 
 export function findOwnedItemByUuid(actor, uuid) {
@@ -63,23 +63,26 @@ export function findOwnedItemByUuid(actor, uuid) {
   return actor.items?.find((item) => item.uuid === target) ?? null;
 }
 
-export function findOwnedItemForMaterial(actor, material) {
-  if (!actor || !material) return null;
+export function findOwnedItemsForMaterial(actor, material) {
+  if (!actor || !material) return [];
   const byUuid = findOwnedItemByUuid(actor, material.uuid);
-  if (byUuid) return byUuid;
-  return findOwnedItemByName(actor, material.name);
+  if (byUuid) return [byUuid];
+  return findOwnedItemsByName(actor, material.name);
+}
+
+export function findOwnedItemForMaterial(actor, material) {
+  return findOwnedItemsForMaterial(actor, material)[0] ?? null;
 }
 
 export function getOwnedItemQuantity(actor, name) {
-  const item = findOwnedItemByName(actor, name);
-  return item ? getItemQuantity(item) : 0;
+  return findOwnedItemsByName(actor, name)
+    .reduce((total, item) => total + Math.max(0, Number(getItemQuantity(item)) || 0), 0);
 }
 
 export function getOwnedMaterialQuantity(actor, material) {
-  const item = findOwnedItemForMaterial(actor, material);
-  return item ? getItemQuantity(item) : 0;
+  return findOwnedItemsForMaterial(actor, material)
+    .reduce((total, item) => total + Math.max(0, Number(getItemQuantity(item)) || 0), 0);
 }
-
 
 export function getActorResourceId(actor) {
   return String(actor?.uuid || actor?.id || actor?.name || "").trim();
@@ -162,31 +165,38 @@ export function normalizeResourceActors(primaryActor = null, resourceActors = nu
 }
 
 export function getOwnedMaterialSourceRows(resourceActors, material) {
-  return normalizeResourceActors(null, resourceActors).map((actor) => {
-    const item = findOwnedItemForMaterial(actor, material);
-    const qty = item ? getItemQuantity(item) : 0;
-    return {
+  return normalizeResourceActors(null, resourceActors).flatMap((actor) => {
+    return findOwnedItemsForMaterial(actor, material).map((item) => ({
       actor,
       actorId: getActorResourceId(actor),
       actorName: actor.name || "",
       actorImg: actor.img || "icons/svg/mystery-man.svg",
       item,
-      qty
-    };
+      itemId: item.id,
+      itemUuid: item.uuid || "",
+      qty: Math.max(0, Number(getItemQuantity(item)) || 0)
+    }));
   }).filter((row) => row.qty > 0);
 }
 
 export function getOwnedMaterialQuantityForActors(resourceActors, material) {
-  const sources = getOwnedMaterialSourceRows(resourceActors, material).map((row) => ({
-    actorId: row.actorId,
-    actorName: row.actorName,
-    actorImg: row.actorImg,
-    qty: row.qty
-  }));
+  const sourceRows = getOwnedMaterialSourceRows(resourceActors, material);
+  const actorMap = new Map();
+
+  for (const row of sourceRows) {
+    const current = actorMap.get(row.actorId) || {
+      actorId: row.actorId,
+      actorName: row.actorName,
+      actorImg: row.actorImg,
+      qty: 0
+    };
+    current.qty += row.qty;
+    actorMap.set(row.actorId, current);
+  }
 
   return {
-    qty: sources.reduce((total, row) => total + row.qty, 0),
-    sources
+    qty: sourceRows.reduce((total, row) => total + row.qty, 0),
+    sources: Array.from(actorMap.values())
   };
 }
 
@@ -264,12 +274,14 @@ export async function consumeOwnedMaterialFromActors(resourceActors, material, q
     const take = Math.min(remaining, source.qty);
     if (take <= 0) continue;
 
-    const result = await consumeOwnedMaterial(source.actor, material, take);
+    const result = await consumeItemDocument(source.actor, source.item, material?.name ?? "", take);
     consumed.push({
       ...result,
       actorId: source.actorId,
       actorName: source.actorName,
-      actorImg: source.actorImg
+      actorImg: source.actorImg,
+      itemId: source.itemId,
+      itemUuid: source.itemUuid
     });
     if (result?.ok) remaining -= take;
   }
@@ -311,8 +323,25 @@ export async function consumeOwnedItem(actor, name, qty) {
 }
 
 export async function consumeOwnedMaterial(actor, material, qty) {
-  const item = findOwnedItemForMaterial(actor, material);
-  return consumeItemDocument(actor, item, material?.name ?? "", qty);
+  let remaining = Math.max(0, Number(qty) || 0);
+  const consumed = [];
+
+  for (const item of findOwnedItemsForMaterial(actor, material)) {
+    if (remaining <= 0) break;
+    const available = Math.max(0, Number(getItemQuantity(item)) || 0);
+    const take = Math.min(remaining, available);
+    if (take <= 0) continue;
+    const result = await consumeItemDocument(actor, item, material?.name ?? "", take);
+    consumed.push(result);
+    if (result?.ok) remaining -= take;
+  }
+
+  return {
+    ok: remaining <= 0,
+    requested: Math.max(0, Number(qty) || 0),
+    remaining,
+    consumed
+  };
 }
 
 export function getGoldInfo(actor) {
@@ -346,7 +375,6 @@ export async function consumeGold(actor, amount) {
   await actor.update({ [info.path]: info.amount - cost });
   return { ok: true, amount: cost, remaining: info.amount - cost };
 }
-
 
 export async function consumeGoldFromActors(resourceActors, amount) {
   let remaining = Math.max(0, Number(amount) || 0);
@@ -434,7 +462,6 @@ function addTypeCandidates(set, value) {
 export function getAvailableItemTypes() {
   const types = new Set();
   const config = globalThis.CONFIG ?? {};
-  const systemId = globalThis.game?.system?.id ?? "";
 
   addTypeCandidates(types, globalThis.game?.system?.documentTypes?.Item);
   addTypeCandidates(types, config.Item?.documentClass?.metadata?.types);
@@ -442,7 +469,9 @@ export function getAvailableItemTypes() {
   addTypeCandidates(types, config.Item?.dataModels);
   addTypeCandidates(types, config.SHADOWDARK?.DEFAULTS?.ITEM_IMAGES);
 
-  if (systemId === "shadowdark" || types.size === 0) {
+  // Runtime system metadata is authoritative. The hard-coded list is only a
+  // compatibility fallback for environments where no item-type metadata is exposed.
+  if (types.size === 0) {
     SHADOWDARK_V350_ITEM_TYPES.forEach((type) => types.add(type));
   }
 
@@ -603,12 +632,25 @@ export async function createActorItemFromRecipe(actor, recipe, resultInfo = {}) 
     data.type = resolveItemType(recipe.outputType, data.type || "Basic");
   }
 
+  const createdQty = Math.max(1, Number(resultInfo.createdQty || recipe.outputQty || 1));
+  const consumedMaterials = Array.isArray(resultInfo.consumedMaterials)
+    ? foundry.utils.deepClone(resultInfo.consumedMaterials)
+    : [];
+  const recoverableMaterials = consumedMaterials
+    .map((material) => ({
+      ...foundry.utils.deepClone(material),
+      qty: Math.ceil(Math.max(0, Number(material?.qty) || 0) / 2)
+    }))
+    .filter((material) => material.name && material.qty > 0);
+
   foundry.utils.setProperty(data, `flags.${MODULE_ID}.${FLAGS.CRAFTED}`, {
     recipeId: resultInfo.recipeId || recipe.id || "",
     recipeBookId: resultInfo.recipeBookId || recipe.bookId || "",
     recipeName: resultInfo.recipeName || recipe.outputName || "",
-    createdQty: Math.max(1, Number(resultInfo.createdQty || recipe.outputQty || 1)),
-    consumedMaterials: Array.isArray(resultInfo.consumedMaterials) ? foundry.utils.deepClone(resultInfo.consumedMaterials) : [],
+    createdQty,
+    remainingQty: createdQty,
+    consumedMaterials,
+    recoverableMaterials,
     recipeSnapshot: resultInfo.recipeSnapshot ? foundry.utils.deepClone(resultInfo.recipeSnapshot) : null,
     crafterName: actor.name,
     quality: resultInfo.quality || "standard",

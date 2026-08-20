@@ -4,7 +4,7 @@ import { CraftingApp } from "./crafting-app.js";
 import { RecipeEditor } from "./recipe-editor.js";
 import { CraftingEngine } from "./crafting-engine.js";
 import { deconstructItem } from "./deconstruction-engine.js";
-import { createSampleRecipes, deleteRecipeItem, getRecipeData, setRecipeData, createRecipeItem } from "./recipe-utils.js";
+import { createSampleRecipes, deleteRecipeItem, ensureDefaultRecipeBook, getRecipeData, setRecipeData, createRecipeItem } from "./recipe-utils.js";
 import { buildRecipeBookData, deleteSavedRecipeBook, exportRecipeBook, importRecipeBookData, openExportRecipeBookDialog, openImportRecipeBookDialog, openManageRecipeBooks, openSaveRecipeBookDialog, renameSavedRecipeBook, saveRecipeBook, updateSavedRecipeBookFromWorld } from "./recipe-books.js";
 
 let activeApp = null;
@@ -153,9 +153,17 @@ Hooks.once("init", () => {
   console.log(`${MODULE_ID} | initialized`);
 });
 
-Hooks.once("ready", () => {
+Hooks.once("ready", async () => {
   if (game.system.id !== "shadowdark") {
     console.warn(`${MODULE_ID} | This module was built for the Shadowdark RPG system. Current system: ${game.system.id}`);
+  }
+
+  if (game.user.isGM) {
+    try {
+      await ensureDefaultRecipeBook();
+    } catch (error) {
+      console.error(`${MODULE_ID} | Failed to initialize recipe books`, error);
+    }
   }
 
   log("ready", { system: game.system.id, version: game.system.version });

@@ -1,6 +1,7 @@
 import { DEFAULT_BOOK_ID, DEFAULT_RECIPE, FLAGS, MODULE_ID } from "./constants.js";
 import { setting, log } from "./settings.js";
-import { findOwnedItemByNameForActors, getGoldInfoForActors, getOwnedMaterialQuantityForActors, normalizeResourceActors, resolveItemType } from "./item-utils.js";
+import { findOwnedItemByNameForActors, getGoldInfoForActors, normalizeResourceActors, resolveItemType } from "./item-utils.js";
+import { getMaterialAvailability, planMaterialGroups } from "./material-allocation.js";
 
 const VALID_ABILITIES = ["str", "dex", "con", "int", "wis", "cha"];
 
@@ -162,8 +163,10 @@ function buildDefaultDeconstructMaterials(recipe = {}) {
     const material = group?.alternatives?.[0];
     if (!material?.name) continue;
 
-    const perOutputQty = Math.max(0, Number(material.qty || 0)) / outputQty;
-    const refundQty = Math.ceil(perOutputQty / 2);
+    // Untracked/legacy outputs have no batch refund ledger. Use a conservative
+    // per-item amount whose total can never exceed half of the recipe input.
+    const totalRecoverable = Math.ceil(Math.max(0, Number(material.qty || 0)) / 2);
+    const refundQty = Math.floor(totalRecoverable / outputQty);
     if (refundQty <= 0) continue;
 
     materials.push({
@@ -184,6 +187,8 @@ export function getRecipeDeconstructMaterials(recipe = {}) {
 }
 
 export function hasRecipeDeconstruction(recipe = {}) {
+  if (recipe.deconstructEnabled === false) return false;
+  if (recipe.deconstructGenerated) return true;
   return getRecipeDeconstructMaterials(recipe).length > 0;
 }
 
@@ -496,10 +501,12 @@ export function checkRecipeRequirements(actor, recipe, { resourceActors = null }
   const missing = [];
   const materialGroups = [];
   const materialRows = [];
+  const materialPlan = planMaterialGroups(sources, recipe.materialGroups ?? []);
+  const selections = new Map((materialPlan.selections ?? []).map((selection) => [selection.groupIndex, selection]));
 
-  for (const group of recipe.materialGroups ?? []) {
+  for (const [groupIndex, group] of (recipe.materialGroups ?? []).entries()) {
     const alternatives = (group.alternatives ?? []).map((material) => {
-      const owned = getOwnedMaterialQuantityForActors(sources, material);
+      const owned = getMaterialAvailability(sources, material);
       const ownedQty = owned.qty;
       const ok = ownedQty >= material.qty;
       const row = {
@@ -513,21 +520,24 @@ export function checkRecipeRequirements(actor, recipe, { resourceActors = null }
       return row;
     });
 
-    const selected = alternatives.find((material) => material.ok) ?? alternatives[0] ?? null;
-    const ok = alternatives.some((material) => material.ok);
-    const groupRow = {
+    const selection = selections.get(groupIndex);
+    let selected = selection ? alternatives[selection.alternativeIndex] ?? null : alternatives.find((material) => material.ok) ?? alternatives[0] ?? null;
+    if (selected && selection) selected = { ...selected, allocations: selection.allocations };
+
+    const groupOk = materialPlan.ok ? Boolean(selection) : groupIndex !== materialPlan.failedGroupIndex && alternatives.some((material) => material.ok);
+    materialGroups.push({
       ...group,
       alternatives,
       selected,
-      ok
-    };
-    materialGroups.push(groupRow);
+      ok: groupOk
+    });
+  }
 
-    if (!ok) {
-      missing.push(game.i18n.format("MKSDC.Requirements.MaterialGroupMissing", {
-        materials: (group.alternatives ?? []).map((material) => `${material.name} x${material.qty}`).join(` ${game.i18n.localize("MKSDC.App.Or")} `)
-      }));
-    }
+  if (!materialPlan.ok && (recipe.materialGroups ?? []).length) {
+    const failed = recipe.materialGroups?.[materialPlan.failedGroupIndex] ?? recipe.materialGroups?.[0];
+    missing.push(game.i18n.format("MKSDC.Requirements.MaterialGroupMissing", {
+      materials: (failed?.alternatives ?? []).map((material) => `${material.name} x${material.qty}`).join(` ${game.i18n.localize("MKSDC.App.Or")} `)
+    }));
   }
 
   let toolOk = true;
@@ -557,10 +567,11 @@ export function checkRecipeRequirements(actor, recipe, { resourceActors = null }
   }
 
   return {
-    ok: missing.length === 0,
+    ok: materialPlan.ok && missing.length === 0,
     missing,
     materialRows,
     materialGroups,
+    materialAllocation: materialPlan,
     toolOk,
     stationOk,
     goldOk,
