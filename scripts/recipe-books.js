@@ -1,9 +1,11 @@
 import { DEFAULT_BOOK_ID, MODULE_ID, TEMPLATES } from "./constants.js";
-import { createRecipeId, getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, sanitizeRecipeData, setActiveRecipeBookIds, setRecipeBooks } from "./recipe-utils.js";
+import { createRecipeId, getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, sanitizeRecipeData, setActiveRecipeBookIds } from "./recipe-utils.js";
+import { mutateRecipeState } from "./recipe-state.js";
 
 const BOOK_KIND = "mk-shadowdark-crafting.recipe-book";
 const BOOK_SCHEMA_VERSION = 2;
 const CURRENT_ACTIVE_KEY = "__current_active__";
+const BOOKS_BASE = Symbol("mk-shadowdark-crafting.books-base");
 
 function slugify(value) {
   return String(value || "recipe-book")
@@ -26,6 +28,10 @@ function escapeHtml(value) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function sameJson(a, b) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 function sanitizeBookName(name) {
@@ -57,17 +63,53 @@ function normalizeBook(raw = {}, fallback = {}) {
 }
 
 export function getSavedRecipeBooks() {
-  return getRecipeBooks();
+  const books = getRecipeBooks();
+  Object.defineProperty(books, BOOKS_BASE, {
+    value: foundry.utils.deepClone(books),
+    enumerable: false,
+    configurable: false,
+    writable: false
+  });
+  return books;
 }
 
 async function writeBooks(books) {
+  const base = foundry.utils.deepClone(books?.[BOOKS_BASE] || {});
   const normalized = {};
   for (const [id, book] of Object.entries(books || {})) {
     normalized[id] = normalizeBook({ ...book, id });
   }
-  await setRecipeBooks(normalized);
-  await setActiveRecipeBookIds(Object.entries(normalized).filter(([, book]) => book.active).map(([id]) => id));
-  return normalized;
+
+  try {
+    const result = await mutateRecipeState((state) => {
+      const touchedIds = new Set([...Object.keys(base), ...Object.keys(normalized)]);
+
+      for (const id of touchedIds) {
+        const before = base[id];
+        const after = normalized[id];
+        if (sameJson(before, after)) continue;
+
+        const current = state.books[id];
+        if (!sameJson(current, before)) {
+          throw new Error(`Recipe book ${id} changed concurrently.`);
+        }
+
+        if (after === undefined) delete state.books[id];
+        else state.books[id] = after;
+      }
+
+      state.activeBookIds = Object.entries(state.books)
+        .filter(([, book]) => Boolean(book?.active))
+        .map(([id]) => id);
+      return foundry.utils.deepClone(state.books);
+    });
+
+    return result.state.books;
+  } catch (error) {
+    console.error(`${MODULE_ID} | Recipe book write conflict`, error);
+    ui.notifications.error("Recipe books changed on another GM client. Refresh the manager and try again.");
+    throw error;
+  }
 }
 
 function getLegacyRecipeItems() {
