@@ -1,7 +1,15 @@
 import { FLAGS, MODULE_ID } from "./constants.js";
 import { setting } from "./settings.js";
 import { postCraftingChatCard } from "./chat.js";
-import { addOwnedItemQuantity, consumeOwnedItemDocument, getItemQuantity, normalizeName } from "./item-utils.js";
+import {
+  addOwnedItemQuantity,
+  consumeOwnedItemDocument,
+  findOwnedItemByName,
+  findOwnedItemForMaterial,
+  getItemQuantity,
+  getItemQuantityPath,
+  normalizeName
+} from "./item-utils.js";
 import { getRecipeDeconstructMaterials, getRecipeEntriesForActor, hasRecipeDeconstruction, isRecipeItem, sanitizeRecipeData } from "./recipe-utils.js";
 import { aggregateRefundMaterials, normalizeRecoverableState, takeOneRefund } from "./deconstruction-refund.js";
 
@@ -11,6 +19,71 @@ function getCraftedFlag(item) {
 
 function sameText(a, b) {
   return normalizeName(a) === normalizeName(b);
+}
+
+function snapshotItem(item) {
+  if (!item) return null;
+  const crafted = getCraftedFlag(item);
+  return {
+    id: item.id,
+    qty: getItemQuantity(item),
+    quantityPath: getItemQuantityPath(item),
+    source: item.toObject(),
+    hadCraftedFlag: crafted !== null && crafted !== undefined,
+    crafted: crafted ? foundry.utils.deepClone(crafted) : null
+  };
+}
+
+function findActorItem(actor, itemId) {
+  return actor?.items?.get?.(itemId) ?? actor?.items?.find?.((item) => item.id === itemId) ?? null;
+}
+
+async function restoreItemSnapshot(actor, snapshot) {
+  if (!actor || !snapshot) return;
+  const current = findActorItem(actor, snapshot.id);
+
+  if (!current) {
+    const source = foundry.utils.deepClone(snapshot.source);
+    await actor.createEmbeddedDocuments("Item", [source], { keepId: true });
+    return;
+  }
+
+  if (snapshot.quantityPath) {
+    await current.update({ [snapshot.quantityPath]: snapshot.qty });
+  }
+
+  if (snapshot.hadCraftedFlag) {
+    await current.setFlag(MODULE_ID, FLAGS.CRAFTED, foundry.utils.deepClone(snapshot.crafted));
+  } else if (getCraftedFlag(current) !== null) {
+    await current.unsetFlag(MODULE_ID, FLAGS.CRAFTED);
+  }
+}
+
+async function rollbackDeconstruction(actor, sourceSnapshot, refundOperations = []) {
+  const errors = [];
+
+  for (const operation of [...refundOperations].reverse()) {
+    try {
+      if (operation.createdItemId) {
+        const created = findActorItem(actor, operation.createdItemId);
+        if (created) await actor.deleteEmbeddedDocuments("Item", [created.id]);
+      } else if (operation.snapshot) {
+        await restoreItemSnapshot(actor, operation.snapshot);
+      }
+    } catch (error) {
+      errors.push(error);
+      console.error(`${MODULE_ID} | Failed to roll back recovered material`, error);
+    }
+  }
+
+  try {
+    await restoreItemSnapshot(actor, sourceSnapshot);
+  } catch (error) {
+    errors.push(error);
+    console.error(`${MODULE_ID} | Failed to roll back deconstructed source item`, error);
+  }
+
+  return { ok: errors.length === 0, errors };
 }
 
 export function recipeMatchesItem(recipe, item) {
@@ -141,7 +214,7 @@ async function persistGeneratedRefundState(item, recipe, plan) {
   if (!plan?.tracked || !plan.nextState) return;
 
   const actor = item?.parent;
-  const remainingItem = actor?.items?.get?.(item.id) ?? actor?.items?.find?.((owned) => owned.id === item.id) ?? null;
+  const remainingItem = findActorItem(actor, item.id);
   if (!remainingItem) return;
 
   const crafted = getCraftedFlag(remainingItem) || getCraftedFlag(item) || {};
@@ -278,11 +351,11 @@ export function findOwnedDeconstructableItem(actor, referenceItem) {
 
   const byUuid = String(referenceItem.uuid || "").trim();
   if (byUuid) {
-    const matchedByUuid = actor.items.find((item) => item.uuid === byUuid && canDeconstructItem(item));
+    const matchedByUuid = actor.items.find((owned) => owned.uuid === byUuid && canDeconstructItem(owned));
     if (matchedByUuid) return matchedByUuid;
   }
 
-  return actor.items.find((item) => itemsMatchForDeconstruction(referenceItem, item) && canDeconstructItem(item)) ?? null;
+  return actor.items.find((owned) => itemsMatchForDeconstruction(referenceItem, owned) && canDeconstructItem(owned)) ?? null;
 }
 
 export function canDeconstructItem(item) {
@@ -334,25 +407,44 @@ export async function deconstructItem(actor, item, options = {}) {
     img: item.img,
     qty: 1
   };
+  const sourceSnapshot = snapshotItem(item);
+  const refundOperations = [];
+  const recovered = [];
 
-  const consumeResult = await consumeOwnedItemDocument(item, 1);
-  if (!consumeResult?.ok) {
+  try {
+    const consumeResult = await consumeOwnedItemDocument(item, 1);
+    if (!consumeResult?.ok) {
+      throw new Error(`Could not remove deconstructed item: ${consumeResult?.reason || "unknown"}`);
+    }
+
+    await persistGeneratedRefundState(item, recipe, refundPlan);
+
+    for (const material of refundMaterials) {
+      const existing = findOwnedItemForMaterial(actor, material) || findOwnedItemByName(actor, material.name);
+      const existingSnapshot = snapshotItem(existing);
+      const recoveredItem = await addOwnedItemQuantity(actor, material, material.qty);
+
+      refundOperations.push({
+        snapshot: existingSnapshot,
+        createdItemId: recoveredItem && (!existing || recoveredItem.id !== existing.id) ? recoveredItem.id : null
+      });
+
+      recovered.push({
+        ...material,
+        actorId: actor.uuid || actor.id,
+        actorName: actor.name || "",
+        actorImg: actor.img || "icons/svg/mystery-man.svg",
+        item: recoveredItem
+      });
+    }
+  } catch (error) {
+    console.error(`${MODULE_ID} | Deconstruction transaction failed`, error);
+    const rollback = await rollbackDeconstruction(actor, sourceSnapshot, refundOperations);
+    if (!rollback.ok) {
+      console.error(`${MODULE_ID} | Deconstruction rollback was incomplete`, rollback.errors);
+    }
     ui.notifications.warn(game.i18n.localize("MKSDC.Deconstruct.CouldNotRemoveItem"));
     return null;
-  }
-
-  await persistGeneratedRefundState(item, recipe, refundPlan);
-
-  const recovered = [];
-  for (const material of refundMaterials) {
-    const recoveredItem = await addOwnedItemQuantity(actor, material, material.qty);
-    recovered.push({
-      ...material,
-      actorId: actor.uuid || actor.id,
-      actorName: actor.name || "",
-      actorImg: actor.img || "icons/svg/mystery-man.svg",
-      item: recoveredItem
-    });
   }
 
   await postCraftingChatCard(actor, {
