@@ -63,3 +63,42 @@ test("single-window guard uses the ApplicationV2 focus API", async () => {
   assert.match(moduleSource, /bringToFront\?\.\(\)/);
   assert.doesNotMatch(moduleSource, /bringToTop\?\.\(\)/);
 });
+
+test("deconstruction uses the same dense row hierarchy as crafting", async () => {
+  const template = await read("templates/crafting-app.hbs");
+  const deconstructSection = template.slice(template.indexOf('{{#if isDeconstructMode}}'));
+
+  assert.match(deconstructSection, /mk-sdc-recipe-row mk-sdc-deconstruct-row/);
+  assert.match(deconstructSection, /mk-sdc-row-main mk-sdc-deconstruct-main/);
+  assert.match(deconstructSection, /mk-sdc-row-content mk-sdc-deconstruct-copy/);
+  assert.match(deconstructSection, /mk-sdc-row-materials-column mk-sdc-deconstruct-recovery/);
+  assert.match(deconstructSection, /mk-sdc-row-actions/);
+});
+
+test("recipe abilities use a borderless three-column selector", async () => {
+  const css = await read("styles/crafting.css");
+  const abilityLayout = css.slice(css.indexOf("/* Recipe ability selector: fixed 3-by-2, without pill containers */"));
+
+  assert.match(abilityLayout, /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(abilityLayout, /\.mk-sdc \.mk-sdc-ability-check\s*\{[^}]*border:\s*0;/s);
+  assert.match(abilityLayout, /\.mk-sdc \.mk-sdc-ability-check\s*\{[^}]*border-radius:\s*0;/s);
+});
+
+test("crafting header leads with the character name and reflects the active mode", async () => {
+  const template = await read("templates/crafting-app.hbs");
+  const header = template.slice(template.indexOf('<header class="mk-sdc-app-header'), template.indexOf('</header>'));
+
+  assert.match(header, /\{\{actorName\}\}/);
+  assert.match(header, /\{\{#if isDeconstructMode\}\}/);
+  assert.match(header, /MKSDC\.Deconstruct\.Action/);
+  assert.match(header, /MKSDC\.Buttons\.Crafting/);
+  assert.doesNotMatch(header, /MKSDC\.App\.Title/);
+});
+
+test("deconstruct mode does not repeat an inventory heading", async () => {
+  const template = await read("templates/crafting-app.hbs");
+  const deconstructSection = template.slice(template.indexOf('{{#if isDeconstructMode}}'));
+
+  assert.doesNotMatch(deconstructSection, /MKSDC\.Deconstruct\.InventoryTitle/);
+  assert.doesNotMatch(deconstructSection, /MKSDC\.Deconstruct\.InventoryHint/);
+});

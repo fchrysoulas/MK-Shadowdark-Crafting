@@ -10,8 +10,16 @@
     <header class="mk-sdc-app-header mk-sdc-app-header--compact">
       <img class="mk-sdc-actor-img mk-sdc-actor-img--compact" src="{{actorImg}}" alt="{{actorName}}">
       <div class="mk-sdc-header-copy">
-        <h2>{{localize "MKSDC.App.Title"}}</h2>
-        <p>{{actorName}}</p>
+        <h2>
+          {{actorName}}
+          <span class="mk-sdc-header-context">-
+            {{#if isDeconstructMode}}
+              {{localize "MKSDC.Deconstruct.Action"}}
+            {{else}}
+              {{localize "MKSDC.Buttons.Crafting"}}
+            {{/if}}
+          </span>
+        </h2>
       </div>
       <div class="mk-sdc-header-actions">
         <button
@@ -385,7 +393,7 @@
     {{/if}}
 
     {{#if isDeconstructMode}}
-      <section class="mk-sdc-deconstruct-panel">
+      <section class="mk-sdc-deconstruct-panel mk-sdc-recipe-content">
         <div class="mk-sdc-list-toolbar">
           <label class="mk-sdc-search-wrap">
             <i class="fas fa-search"></i>
@@ -398,13 +406,6 @@
             >
           </label>
         </div>
-
-        <header class="mk-sdc-deconstruct-header">
-          <div>
-            <h3>{{localize "MKSDC.Deconstruct.InventoryTitle"}}</h3>
-            <p>{{localize "MKSDC.Deconstruct.InventoryHint"}}</p>
-          </div>
-        </header>
 
         {{#unless hasDeconstructItems}}
           <div class="mk-sdc-empty">
@@ -424,12 +425,18 @@
           {{#if hasDeconstructVisibleItems}}
             <div class="mk-sdc-deconstruct-list" role="list">
               {{#each deconstructVisibleItems as |entry|}}
-                <article class="mk-sdc-deconstruct-row {{#if entry.canDeconstruct}}can-deconstruct{{else}}cannot-deconstruct{{/if}}" role="listitem" data-item-id="{{entry.id}}">
-                  <div class="mk-sdc-deconstruct-main">
-                    <img class="mk-sdc-recipe-img mk-sdc-recipe-img--list" src="{{entry.img}}" alt="{{entry.name}}">
-                    <div class="mk-sdc-deconstruct-copy">
-                      <h3>{{entry.name}}</h3>
-                      <div class="mk-sdc-tags mk-sdc-tags--compact">
+                <article class="mk-sdc-recipe-row mk-sdc-deconstruct-row {{#if entry.canDeconstruct}}can-deconstruct{{else}}cannot-deconstruct{{/if}}" role="listitem" data-item-id="{{entry.id}}">
+                  <div class="mk-sdc-row-main mk-sdc-deconstruct-main">
+                    <div class="mk-sdc-recipe-img-wrap mk-sdc-recipe-img-wrap--list">
+                      <img class="mk-sdc-recipe-img mk-sdc-recipe-img--list" src="{{entry.img}}" alt="{{entry.name}}">
+                      <span class="mk-sdc-output-qty-badge">x{{entry.qty}}</span>
+                    </div>
+
+                    <div class="mk-sdc-row-content mk-sdc-deconstruct-copy">
+                      <div class="mk-sdc-row-topline">
+                        <h3>{{entry.name}}</h3>
+                      </div>
+                      <div class="mk-sdc-tags mk-sdc-tags--compact mk-sdc-tags--below-title">
                         <span>{{localize "MKSDC.Editor.Quantity"}} {{entry.qty}}</span>
                         <span>{{entry.type}}</span>
                         <span>{{localize "MKSDC.Deconstruct.FromRecipe"}} {{entry.recipeName}}</span>
@@ -437,10 +444,9 @@
                     </div>
                   </div>
 
-                  <div class="mk-sdc-deconstruct-recovery">
-                    <strong>{{localize "MKSDC.Chat.Recovered"}}</strong>
+                  <div class="mk-sdc-row-materials-column mk-sdc-deconstruct-recovery">
                     {{#if entry.hasRefundMaterials}}
-                      <div class="mk-sdc-deconstruct-materials">
+                      <div class="mk-sdc-row-materials-line mk-sdc-row-materials-line--column mk-sdc-deconstruct-materials">
                         {{#each entry.refundMaterials as |material|}}
                           <span class="mk-sdc-inline-material ok">
                             <img class="mk-sdc-material-icon mk-sdc-material-icon--inline" src="{{material.img}}" alt="{{material.name}}">
@@ -450,11 +456,13 @@
                         {{/each}}
                       </div>
                     {{else}}
-                      <span class="mk-sdc-muted">{{localize "MKSDC.Deconstruct.NoMaterials"}}</span>
+                      <div class="mk-sdc-row-materials-line mk-sdc-row-materials-line--column">
+                        <span class="mk-sdc-muted">{{localize "MKSDC.Deconstruct.NoMaterials"}}</span>
+                      </div>
                     {{/if}}
                   </div>
 
-                  <div class="mk-sdc-row-actions">
+                  <div class="mk-sdc-row-actions" aria-label="{{localize 'MKSDC.Deconstruct.Action'}}">
                     <button
                       type="button"
                       class="mk-sdc-card-icon-button"

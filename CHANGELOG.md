@@ -2,6 +2,15 @@
 
 All notable changes to MK Shadowdark Crafting are documented here.
 
+## Unreleased
+
+- Restyled the crafting, recipe editor, recipe book, dialog, and chat interfaces with a consistent high-contrast palette and Montserrat typography.
+- Added visible ApplicationV2 scrollbars and a reliable Font Awesome close icon.
+- Aligned Deconstruct mode with the Crafting dense-list hierarchy, spacing, typography, material order, and responsive behavior.
+- Changed Recipe Editor ability choices to a borderless three-column by two-row layout.
+- Simplified the Crafting header to show `Character Name - Crafting` beside the portrait.
+- Made the character header reflect the active mode and removed the redundant Deconstruct Inventory title and hint.
+
 ## 0.4.3
 
 - Extended Foundry VTT compatibility through v14 while retaining v13 as the minimum supported version.
