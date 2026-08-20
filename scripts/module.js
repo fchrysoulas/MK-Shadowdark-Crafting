@@ -8,12 +8,20 @@ import { createSampleRecipes, deleteRecipeItem, ensureDefaultRecipeBook, getReci
 import { buildRecipeBookData, deleteSavedRecipeBook, exportRecipeBook, importRecipeBookData, openExportRecipeBookDialog, openImportRecipeBookDialog, openManageRecipeBooks, openSaveRecipeBookDialog, renameSavedRecipeBook, saveRecipeBook, updateSavedRecipeBookFromWorld } from "./recipe-books.js";
 
 let activeApp = null;
+let openingApp = false;
 
 function selectedActor() {
   const controlled = canvas?.tokens?.controlled ?? [];
   const tokenActor = controlled[0]?.actor;
   if (tokenActor) return tokenActor;
   return game.user.character ?? null;
+}
+
+function sameActor(a, b) {
+  if (!a || !b) return false;
+  const aId = String(a.uuid || a.id || "").trim();
+  const bId = String(b.uuid || b.id || "").trim();
+  return Boolean(aId && bId && aId === bId);
 }
 
 export function openCraftingApp(actor = null) {
@@ -23,9 +31,27 @@ export function openCraftingApp(actor = null) {
     return null;
   }
 
-  activeApp = new CraftingApp(target);
-  activeApp.render(true);
-  return activeApp;
+  // Scene-control compatibility layers can emit more than one callback for a
+  // single pointer action. Reuse the same application while it is rendering
+  // or already open instead of constructing another window.
+  if (activeApp && sameActor(activeApp.actor, target) && (openingApp || activeApp.rendered)) {
+    activeApp.bringToTop?.();
+    return activeApp;
+  }
+
+  openingApp = true;
+  try {
+    activeApp = new CraftingApp(target);
+    activeApp.render(true);
+    window.setTimeout(() => {
+      openingApp = false;
+    }, 0);
+    return activeApp;
+  } catch (error) {
+    openingApp = false;
+    activeApp = null;
+    throw error;
+  }
 }
 
 function registerHandlebarsHelpers() {
@@ -84,7 +110,6 @@ function registerSceneControlButton(controls) {
     icon: "fas fa-hammer",
     button: true,
     visible: game.user.isGM || setting("allowPlayerCrafting"),
-    onClick: () => openCraftingApp(),
     onChange: () => openCraftingApp()
   });
 }
