@@ -6,6 +6,7 @@ import { planMaterialGroups, sliceMaterialAllocations } from "./material-allocat
 import { ResourceTransaction } from "./resource-transaction.js";
 import { postCraftingChatCard } from "./chat.js";
 import { showDiceSoNiceRoll } from "./dice-so-nice.js";
+import { dialogValue, DialogV2 } from "./application-v2.js";
 
 function getD20Result(roll) {
   const d20 = roll.dice?.find((die) => die.faces === 20);
@@ -130,45 +131,40 @@ async function showCraftingRollDialog(actor, recipe) {
   }).join("");
 
   const content = `
-    <form class="mk-sdc mk-sdc-roll-dialog">
+    <div class="mk-sdc mk-sdc-roll-dialog">
       <div class="form-group">
         <label>${game.i18n.localize("MKSDC.Dialog.AbilityLabel")}</label>
         <select name="ability">${abilityOptions}</select>
       </div>
       <p class="hint">${game.i18n.localize("MKSDC.Dialog.RollModeHint")}</p>
-    </form>`;
+    </div>`;
 
-  return new Promise((resolve) => {
-    let resolved = false;
-    const done = (value) => {
-      if (resolved) return;
-      resolved = true;
-      resolve(value);
-    };
-
-    new Dialog({
-      title: game.i18n.format("MKSDC.Dialog.CraftRollTitle", { name: recipe.outputName }),
-      content,
-      buttons: {
-        advantage: {
-          icon: '<i class="fas fa-angle-double-up"></i>',
-          label: game.i18n.localize("MKSDC.RollMode.Advantage"),
-          callback: (html) => done({ ability: html.find("[name='ability']").val() || allowedAbilities[0], rollMode: "advantage" })
-        },
-        normal: {
-          icon: '<i class="fas fa-dice-d20"></i>',
-          label: game.i18n.localize("MKSDC.RollMode.Normal"),
-          callback: (html) => done({ ability: html.find("[name='ability']").val() || allowedAbilities[0], rollMode: "normal" })
-        },
-        disadvantage: {
-          icon: '<i class="fas fa-angle-double-down"></i>',
-          label: game.i18n.localize("MKSDC.RollMode.Disadvantage"),
-          callback: (html) => done({ ability: html.find("[name='ability']").val() || allowedAbilities[0], rollMode: "disadvantage" })
-        }
+  return DialogV2.wait({
+    window: { title: game.i18n.format("MKSDC.Dialog.CraftRollTitle", { name: recipe.outputName }) },
+    content,
+    modal: true,
+    rejectClose: false,
+    buttons: [
+      {
+        action: "advantage",
+        icon: "fas fa-angle-double-up",
+        label: game.i18n.localize("MKSDC.RollMode.Advantage"),
+        callback: (_event, button) => ({ ability: dialogValue(button, "ability", allowedAbilities[0]) || allowedAbilities[0], rollMode: "advantage" })
       },
-      default: "normal",
-      close: () => done(null)
-    }).render(true);
+      {
+        action: "normal",
+        icon: "fas fa-dice-d20",
+        label: game.i18n.localize("MKSDC.RollMode.Normal"),
+        default: true,
+        callback: (_event, button) => ({ ability: dialogValue(button, "ability", allowedAbilities[0]) || allowedAbilities[0], rollMode: "normal" })
+      },
+      {
+        action: "disadvantage",
+        icon: "fas fa-angle-double-down",
+        label: game.i18n.localize("MKSDC.RollMode.Disadvantage"),
+        callback: (_event, button) => ({ ability: dialogValue(button, "ability", allowedAbilities[0]) || allowedAbilities[0], rollMode: "disadvantage" })
+      }
+    ]
   });
 }
 

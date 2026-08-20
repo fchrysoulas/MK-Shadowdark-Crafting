@@ -42,7 +42,7 @@ export function openCraftingApp(actor = null) {
   openingApp = true;
   try {
     activeApp = new CraftingApp(target);
-    activeApp.render(true);
+    activeApp.render({ force: true });
     window.setTimeout(() => {
       openingApp = false;
     }, 0);
@@ -152,7 +152,7 @@ Hooks.once("init", () => {
 
   window.mkShadowdarkCrafting = {
     open: openCraftingApp,
-    openRecipeEditor: (item = null) => new RecipeEditor(item).render(true),
+    openRecipeEditor: (item = null) => new RecipeEditor(item).render({ force: true }),
     craft: (actor, recipeUuid, options = {}) => CraftingEngine.craft(actor, recipeUuid, options),
     deconstruct: (actor, item, options = {}) => deconstructItem(actor, item, options),
     createRecipeItem,
