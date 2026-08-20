@@ -37,6 +37,99 @@ function clearTimer(timer) {
   if (timer) window.clearTimeout(timer);
 }
 
+function actionSetMode(event, target) {
+  event.preventDefault();
+  const mode = String(target.dataset.mode || "craft");
+  this.mode = mode === "deconstruct" ? "deconstruct" : "craft";
+  this._restoreSearchFocus = false;
+  this.render();
+}
+
+function actionSelectGroup(event, target) {
+  event.preventDefault();
+  this.selectedGroupType = target.dataset.groupType || "__all__";
+  this.selectedRecipeId = null;
+  this._restoreSearchFocus = false;
+  this.render();
+}
+
+function actionSelectRecipe(event, target) {
+  event.preventDefault();
+  this.selectedRecipeId = target.dataset.recipeKey || target.dataset.recipeId || null;
+  this._restoreSearchFocus = false;
+  this.render();
+}
+
+async function actionCraft(event, target) {
+  event.preventDefault();
+  const recipeId = target.dataset.recipeId || target.dataset.recipeUuid;
+  const bookId = target.dataset.bookId || "";
+  target.disabled = true;
+  try {
+    await CraftingEngine.craft(this.actor, recipeId, { bookId, resourceActorIds: this._getSelectedResourceActorIds() });
+  } finally {
+    target.disabled = false;
+    this.render();
+  }
+}
+
+async function actionDeconstruct(event, target) {
+  event.preventDefault();
+  if (!this.actor) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.NoActor"));
+  const itemId = String(target.dataset.itemId || "").trim();
+  const item = itemId ? this.actor.items?.get?.(itemId) : null;
+  if (!item) return ui.notifications.warn(game.i18n.localize("MKSDC.Deconstruct.NoItem"));
+  target.disabled = true;
+  try {
+    await deconstructItem(this.actor, item, { skipConfirm: true });
+  } finally {
+    target.disabled = false;
+    this.render();
+  }
+}
+
+async function actionCreateRecipe(event) {
+  event.preventDefault();
+  await ensureDefaultRecipeBook();
+  new RecipeEditor(null).render({ force: true });
+}
+
+function actionManageRecipeBooks(event) {
+  event.preventDefault();
+  openManageRecipeBooks();
+}
+
+async function actionEditRecipe(event, target) {
+  event.preventDefault();
+  const recipeId = target.dataset.recipeId || target.dataset.recipeUuid;
+  const bookId = target.dataset.bookId || "";
+  const recipe = await getRecipeById(recipeId, { bookId });
+  if (!recipe) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
+  new RecipeEditor(recipe).render({ force: true });
+}
+
+async function actionDeleteRecipe(event, target) {
+  event.preventDefault();
+  const recipeId = target.dataset.recipeId || target.dataset.recipeUuid;
+  const bookId = target.dataset.bookId || "";
+  const recipe = await getRecipeById(recipeId, { bookId });
+  if (!recipe) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
+
+  const confirmed = await confirmDialog({
+    title: game.i18n.localize("MKSDC.Dialog.DeleteRecipeTitle"),
+    content: `<p>${game.i18n.format("MKSDC.Dialog.DeleteRecipeContent", { name: escapeHtml(recipe.outputName) })}</p>`,
+    defaultYes: false
+  });
+  if (!confirmed) return;
+  await deleteRecipe(recipeId, { bookId });
+  this.render();
+}
+
+function actionRefresh(event) {
+  event.preventDefault();
+  this.render();
+}
+
 export class CraftingApp extends MKApplicationV2 {
   constructor(actor = null, options = {}) {
     super(options);
@@ -69,6 +162,18 @@ export class CraftingApp extends MKApplicationV2 {
     position: {
       width: 1080,
       height: 760
+    },
+    actions: {
+      "set-mode": actionSetMode,
+      "select-group": actionSelectGroup,
+      "select-recipe": actionSelectRecipe,
+      craft: actionCraft,
+      deconstruct: actionDeconstruct,
+      "create-recipe": actionCreateRecipe,
+      "manage-recipe-books": actionManageRecipeBooks,
+      "edit-recipe": actionEditRecipe,
+      "delete-recipe": actionDeleteRecipe,
+      refresh: actionRefresh
     }
   };
 
@@ -88,15 +193,14 @@ export class CraftingApp extends MKApplicationV2 {
     this._restoreSearchAction = action || "search";
     this._searchRenderTimer = window.setTimeout(() => {
       this._searchRenderTimer = null;
-      this.render(false);
+      this.render();
     }, 160);
   }
 
-  _restoreSearchInputFocus(html) {
+  _restoreSearchInputFocus(root) {
     if (!this._restoreSearchFocus) return;
-
     const action = String(this._restoreSearchAction || "search").replace(/[^a-z0-9_-]/gi, "");
-    const input = html.find(`[data-action='${action}']`)[0];
+    const input = root?.querySelector?.(`[data-action='${action}']`);
     if (!input) return;
 
     window.setTimeout(() => {
@@ -137,7 +241,6 @@ export class CraftingApp extends MKApplicationV2 {
   _matchesSearch(entry) {
     const needle = normalizeSearchText(this.searchTerm);
     if (!needle) return true;
-
     const haystack = [
       entry.name,
       entry.groupType,
@@ -148,14 +251,12 @@ export class CraftingApp extends MKApplicationV2 {
       entry.recipe.stationRequired,
       entry.recipe.notes
     ].join(" ").toLowerCase();
-
     return haystack.includes(needle);
   }
 
   _matchesDeconstructSearch(entry) {
     const needle = normalizeSearchText(this.deconstructSearchTerm);
     if (!needle) return true;
-
     const haystack = [
       entry.name,
       entry.type,
@@ -163,14 +264,12 @@ export class CraftingApp extends MKApplicationV2 {
       entry.refundSummary,
       ...(entry.refundMaterials || []).map((material) => `${material.name} ${material.qty}`)
     ].join(" ").toLowerCase();
-
     return haystack.includes(needle);
   }
 
   _getResourceActorState() {
     const available = getAvailableResourceActors(this.actor);
     const availableIds = new Set(available.map((entry) => entry.id));
-
     if (this.selectedResourceActorIds === null) {
       this.selectedResourceActorIds = available.filter((entry) => entry.primary).map((entry) => entry.id);
     } else {
@@ -189,7 +288,6 @@ export class CraftingApp extends MKApplicationV2 {
       order: index + 1,
       sourceLabel: entry.primary ? game.i18n.localize("MKSDC.App.Crafter") : ""
     }));
-
     return {
       rows,
       actors: available.filter((entry) => selected.has(entry.id)).map((entry) => entry.actor)
@@ -202,9 +300,6 @@ export class CraftingApp extends MKApplicationV2 {
   }
 
   async getData() {
-    // World-scoped recipe initialization is a GM responsibility. Player
-    // rendering must remain read-only so a fresh install cannot throw a
-    // permission error simply by opening the Crafting App.
     if (game.user.isGM) await ensureDefaultRecipeBook();
     const actor = this.actor;
     const resourceState = this._getResourceActorState();
@@ -251,25 +346,15 @@ export class CraftingApp extends MKApplicationV2 {
     })).sort((a, b) => a.name.localeCompare(b.name));
 
     const availableGroupNames = new Set(recipeGroups.map((group) => group.name));
-    if (this.selectedGroupType !== "__all__" && !availableGroupNames.has(this.selectedGroupType)) {
-      this.selectedGroupType = "__all__";
-    }
+    if (this.selectedGroupType !== "__all__" && !availableGroupNames.has(this.selectedGroupType)) this.selectedGroupType = "__all__";
 
     const activeGroup = recipeGroups.find((group) => group.name === this.selectedGroupType) ?? null;
-    let visibleRecipes = this.selectedGroupType === "__all__"
-      ? this._sortRecipes(recipes)
-      : (activeGroup?.recipes ?? []);
-
+    let visibleRecipes = this.selectedGroupType === "__all__" ? this._sortRecipes(recipes) : (activeGroup?.recipes ?? []);
     visibleRecipes = visibleRecipes.filter((entry) => this._matchesSearch(entry));
 
-    if (visibleRecipes.length && !visibleRecipes.some((entry) => entry.key === this.selectedRecipeId)) {
-      this.selectedRecipeId = visibleRecipes[0].key;
-    }
-
+    if (visibleRecipes.length && !visibleRecipes.some((entry) => entry.key === this.selectedRecipeId)) this.selectedRecipeId = visibleRecipes[0].key;
     const selectedEntry = visibleRecipes.find((entry) => entry.key === this.selectedRecipeId) ?? visibleRecipes[0] ?? null;
-    for (const entry of visibleRecipes) {
-      entry.active = selectedEntry?.key === entry.key;
-    }
+    for (const entry of visibleRecipes) entry.active = selectedEntry?.key === entry.key;
 
     const groupTree = [
       {
@@ -294,12 +379,10 @@ export class CraftingApp extends MKApplicationV2 {
       { value: "dc-asc", label: game.i18n.localize("MKSDC.App.Sort.DCAsc"), selected: this.sortMode === "dc-asc" },
       { value: "time-asc", label: game.i18n.localize("MKSDC.App.Sort.TimeAsc"), selected: this.sortMode === "time-asc" }
     ];
-
     const layoutOptions = [
       { value: "dense", label: game.i18n.localize("MKSDC.Layout.DenseList"), selected: this.layoutMode === "dense" },
       { value: "detail", label: game.i18n.localize("MKSDC.Layout.MasterDetail"), selected: this.layoutMode === "detail" }
     ];
-
     const deconstructItems = actor ? getInventoryDeconstructionEntriesForActor(actor) : [];
     const deconstructVisibleItems = deconstructItems.filter((entry) => this._matchesDeconstructSearch(entry));
 
@@ -347,27 +430,12 @@ export class CraftingApp extends MKApplicationV2 {
     };
   }
 
-  activateListeners(html) {
-    super.activateListeners(html);
-    this._restoreSearchInputFocus(html);
+  _onRender(context, options) {
+    super._onRender(context, options);
+    const root = this.element;
+    this._restoreSearchInputFocus(root);
 
-    html.find("[data-action='set-mode']").on("click", (event) => {
-      event.preventDefault();
-      const mode = String(event.currentTarget.dataset.mode || "craft");
-      this.mode = mode === "deconstruct" ? "deconstruct" : "craft";
-      this._restoreSearchFocus = false;
-      this.render(false);
-    });
-
-    html.find("[data-action='select-group']").on("click", (event) => {
-      event.preventDefault();
-      this.selectedGroupType = event.currentTarget.dataset.groupType || "__all__";
-      this.selectedRecipeId = null;
-      this._restoreSearchFocus = false;
-      this.render(false);
-    });
-
-    html.find("[data-action='search']").on("input", (event) => {
+    root.querySelector("[data-action='search']")?.addEventListener("input", (event) => {
       const input = event.currentTarget;
       this.searchTerm = String(input.value || "");
       this._searchSelectionStart = input.selectionStart;
@@ -375,7 +443,7 @@ export class CraftingApp extends MKApplicationV2 {
       this._scheduleSearchRender();
     });
 
-    html.find("[data-action='search-deconstruct']").on("input", (event) => {
+    root.querySelector("[data-action='search-deconstruct']")?.addEventListener("input", (event) => {
       const input = event.currentTarget;
       this.deconstructSearchTerm = String(input.value || "");
       this._searchSelectionStart = input.selectionStart;
@@ -383,110 +451,30 @@ export class CraftingApp extends MKApplicationV2 {
       this._scheduleSearchRender("search-deconstruct");
     });
 
-    html.find("[data-action='sort']").on("change", (event) => {
+    root.querySelector("[data-action='sort']")?.addEventListener("change", (event) => {
       this.sortMode = String(event.currentTarget.value || "name-asc");
       this._restoreSearchFocus = false;
-      this.render(false);
+      this.render();
     });
 
-    html.find("[data-action='layout']").on("change", async (event) => {
+    root.querySelector("[data-action='layout']")?.addEventListener("change", async (event) => {
       this.layoutMode = String(event.currentTarget.value || "dense");
       this._restoreSearchFocus = false;
       await game.settings.set(MODULE_ID, "layoutMode", this.layoutMode);
-      this.render(false);
+      this.render();
     });
 
-    html.find("[data-action='select-recipe']").on("click", (event) => {
-      event.preventDefault();
-      this.selectedRecipeId = event.currentTarget.dataset.recipeKey || event.currentTarget.dataset.recipeId || null;
-      this._restoreSearchFocus = false;
-      this.render(false);
-    });
-
-    html.find("[data-action='toggle-resource-actor']").on("change", (event) => {
-      const id = String(event.currentTarget.dataset.actorId || "").trim();
-      if (!id) return;
-
-      const selected = new Set(this._getSelectedResourceActorIds());
-      if (event.currentTarget.checked) selected.add(id);
-      else selected.delete(id);
-
-      this.selectedResourceActorIds = Array.from(selected);
-      this._restoreSearchFocus = false;
-      this.render(false);
-    });
-
-    html.find("[data-action='craft']").on("click", async (event) => {
-      event.preventDefault();
-      const button = event.currentTarget;
-      const recipeId = button.dataset.recipeId || button.dataset.recipeUuid;
-      const bookId = button.dataset.bookId || "";
-      button.disabled = true;
-      try {
-        await CraftingEngine.craft(this.actor, recipeId, { bookId, resourceActorIds: this._getSelectedResourceActorIds() });
-      } finally {
-        button.disabled = false;
-        this.render(false);
-      }
-    });
-
-    html.find("[data-action='deconstruct']").on("click", async (event) => {
-      event.preventDefault();
-      if (!this.actor) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.NoActor"));
-      const button = event.currentTarget;
-      const itemId = String(button.dataset.itemId || "").trim();
-      const item = itemId ? this.actor.items?.get?.(itemId) : null;
-      if (!item) return ui.notifications.warn(game.i18n.localize("MKSDC.Deconstruct.NoItem"));
-      button.disabled = true;
-      try {
-        await deconstructItem(this.actor, item, { skipConfirm: true });
-      } finally {
-        button.disabled = false;
-        this.render(false);
-      }
-    });
-
-    html.find("[data-action='create-recipe']").on("click", async (event) => {
-      event.preventDefault();
-      await ensureDefaultRecipeBook();
-      new RecipeEditor(null).render(true);
-    });
-
-    html.find("[data-action='manage-recipe-books']").on("click", (event) => {
-      event.preventDefault();
-      openManageRecipeBooks();
-    });
-
-    html.find("[data-action='edit-recipe']").on("click", async (event) => {
-      event.preventDefault();
-      const recipeId = event.currentTarget.dataset.recipeId || event.currentTarget.dataset.recipeUuid;
-      const bookId = event.currentTarget.dataset.bookId || "";
-      const recipe = await getRecipeById(recipeId, { bookId });
-      if (!recipe) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
-      new RecipeEditor(recipe).render(true);
-    });
-
-    html.find("[data-action='delete-recipe']").on("click", async (event) => {
-      event.preventDefault();
-      const recipeId = event.currentTarget.dataset.recipeId || event.currentTarget.dataset.recipeUuid;
-      const bookId = event.currentTarget.dataset.bookId || "";
-      const recipe = await getRecipeById(recipeId, { bookId });
-      if (!recipe) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
-
-      const confirmed = await confirmDialog({
-        title: game.i18n.localize("MKSDC.Dialog.DeleteRecipeTitle"),
-        content: `<p>${game.i18n.format("MKSDC.Dialog.DeleteRecipeContent", { name: escapeHtml(recipe.outputName) })}</p>`,
-        defaultYes: false
+    root.querySelectorAll("[data-action='toggle-resource-actor']").forEach((input) => {
+      input.addEventListener("change", (event) => {
+        const id = String(event.currentTarget.dataset.actorId || "").trim();
+        if (!id) return;
+        const selected = new Set(this._getSelectedResourceActorIds());
+        if (event.currentTarget.checked) selected.add(id);
+        else selected.delete(id);
+        this.selectedResourceActorIds = Array.from(selected);
+        this._restoreSearchFocus = false;
+        this.render();
       });
-
-      if (!confirmed) return;
-      await deleteRecipe(recipeId, { bookId });
-      this.render(false);
-    });
-
-    html.find("[data-action='refresh']").on("click", (event) => {
-      event.preventDefault();
-      this.render(false);
     });
   }
 }
