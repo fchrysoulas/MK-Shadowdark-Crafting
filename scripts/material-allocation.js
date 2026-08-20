@@ -1,4 +1,9 @@
-import { getOwnedMaterialSourceRows } from "./item-utils.js";
+import {
+  getActorResourceId,
+  getItemQuantity,
+  normalizeName,
+  normalizeResourceActors
+} from "./item-utils.js";
 
 function sourceKey(source) {
   return `${source.actorId}::${source.itemId}`;
@@ -8,18 +13,91 @@ function cloneLedger(ledger) {
   return new Map(ledger);
 }
 
+function itemSourceMatchesUuid(item, uuid) {
+  const target = String(uuid || "").trim();
+  if (!target || !item) return false;
+  if (String(item.uuid || "").trim() === target) return true;
+
+  const coreSource = String(item.getFlag?.("core", "sourceId") || "").trim();
+  if (coreSource === target) return true;
+
+  const compendiumSource = String(item._stats?.compendiumSource || "").trim();
+  if (compendiumSource === target) return true;
+
+  const duplicateSource = String(item._stats?.duplicateSource || "").trim();
+  return duplicateSource === target;
+}
+
+function materialMatchesItem(item, material = {}) {
+  if (!item || !material) return false;
+
+  const materialUuid = String(material.uuid || "").trim();
+  if (materialUuid && !itemSourceMatchesUuid(item, materialUuid)) return false;
+
+  const targetName = normalizeName(material.name);
+  if (targetName && normalizeName(item.name) !== targetName) return false;
+
+  const targetType = normalizeName(material.type);
+  if (targetType && normalizeName(item.type) !== targetType) return false;
+
+  return true;
+}
+
+export function getMaterialAvailability(resourceActors, material = {}) {
+  const actorSources = [];
+  const itemSources = [];
+
+  for (const actor of normalizeResourceActors(null, resourceActors)) {
+    const actorId = getActorResourceId(actor);
+    let actorQty = 0;
+
+    for (const item of actor.items || []) {
+      if (!materialMatchesItem(item, material)) continue;
+      const qty = Math.max(0, Number(getItemQuantity(item)) || 0);
+      if (qty <= 0) continue;
+
+      actorQty += qty;
+      itemSources.push({
+        actorId,
+        actorName: actor.name || "",
+        actorImg: actor.img || "icons/svg/mystery-man.svg",
+        itemId: item.id,
+        itemUuid: item.uuid || "",
+        itemName: item.name || material.name || "",
+        qty
+      });
+    }
+
+    if (actorQty > 0) {
+      actorSources.push({
+        actorId,
+        actorName: actor.name || "",
+        actorImg: actor.img || "icons/svg/mystery-man.svg",
+        qty: actorQty
+      });
+    }
+  }
+
+  return {
+    qty: itemSources.reduce((total, source) => total + source.qty, 0),
+    sources: actorSources,
+    itemSources
+  };
+}
+
 function prepareGroups(resourceActors, materialGroups = []) {
   const ledger = new Map();
   const groups = (materialGroups || []).map((group, groupIndex) => {
     const alternatives = (group?.alternatives || []).map((material, alternativeIndex) => {
-      const sources = getOwnedMaterialSourceRows(resourceActors, material).map((source) => {
+      const availability = getMaterialAvailability(resourceActors, material);
+      const sources = availability.itemSources.map((source) => {
         const row = {
           actorId: source.actorId,
           actorName: source.actorName,
           actorImg: source.actorImg,
           itemId: source.itemId,
           itemUuid: source.itemUuid,
-          itemName: source.item?.name || material.name || "",
+          itemName: source.itemName,
           availableQty: Math.max(0, Number(source.qty) || 0)
         };
 
