@@ -6,9 +6,9 @@ MK Shadowdark Crafting stores recipes in **Recipe Books** saved to world setting
 
 ## Compatibility
 
-- Foundry VTT: v13
+- Foundry VTT: v13-v14
 - Shadowdark RPG: 3.5.0 or later
-- Current module version: 0.4.2
+- Current module version: 0.4.3
 
 ## Features
 
@@ -56,11 +56,13 @@ window.mkShadowdarkCrafting.open(game.user.character);
 
 On success, the module consumes the required materials and creates the crafted item on the actor. On failure, material loss depends on the world settings. Critical success and critical failure behavior can also be configured in settings.
 
+Crafting inventory changes are handled transactionally. If an internal material, currency, or output-creation mutation fails, the module attempts to restore the pre-craft inventory state instead of leaving a partial craft behind.
+
 ## Deconstruction
 
 Open the Crafting Panel and switch to Deconstruct mode using the recycle button in the header.
 
-Deconstruct mode lists owned inventory items that have deconstruction data. Deconstructing removes one owned item and returns the configured recovered materials. New recipes can define deconstruction materials directly; if left empty, the editor generates a default recovery list from half of the first craft material choices, rounded up.
+Deconstruct mode lists owned inventory items that have deconstruction data. Deconstructing removes one owned item and returns the configured recovered materials. New generated deconstruction data uses a finite recovery pool for the crafted batch, so multi-output recipes cannot create extra resources by rounding each output independently.
 
 ## Recipe Books
 
@@ -78,6 +80,14 @@ From the Recipe Book Manager, a GM can:
 - Migrate old item-based recipes into a new recipe book
 
 Only active books appear in the Crafting UI.
+
+### Visibility and secrecy
+
+Recipe Books are stored in a **world setting**. World-setting data is delivered to connected Foundry clients, so an inactive recipe book must **not** be treated as secret GM-only storage. Inactive means “not currently shown by the Crafting UI,” not “hidden from a technically capable client.”
+
+Output item snapshots stored inside recipes are reduced to the fields needed to reconstruct the item: basic document identity, Shadowdark system data, sanitized effects, and flags belonging to the active game system. Arbitrary third-party flags, ownership, folder data, sort data, and other document metadata are not retained in the recipe snapshot.
+
+If a future feature requires genuinely secret recipes, those recipes should move to permission-controlled Foundry Documents or another GM-authoritative storage mechanism rather than relying on inactive world-setting entries.
 
 ## Creating Recipes
 
@@ -104,9 +114,11 @@ Torch requires:
 
 ## Migration From Old Versions
 
-Older versions stored recipes as world Items with module flags. Current versions can migrate those safely into Recipe Books.
+Older versions stored recipes as world Items with module flags. Later versions used separate `recipeBooks` and `activeRecipeBookIds` world settings.
 
-Open:
+The current storage model automatically migrates those world-setting values into one unified `recipeState` object from a GM client. The legacy settings remain registered only so existing worlds can be read during migration.
+
+For old item-based recipes, open:
 
 ```text
 Crafting Panel > Manage Books > Migrate Recipes
@@ -116,17 +128,27 @@ The migration copies old item-based recipes into a new active recipe book called
 
 ## Recipe Data
 
-Recipe books are stored in:
+Recipe books, active-book IDs, and a revision counter are stored together in:
 
 ```js
-game.settings.get("mk-shadowdark-crafting", "recipeBooks");
+game.settings.get("mk-shadowdark-crafting", "recipeState");
 ```
 
-Active recipe book IDs are stored in:
+The shape is approximately:
 
 ```js
-game.settings.get("mk-shadowdark-crafting", "activeRecipeBookIds");
+{
+  schemaVersion: 3,
+  initialized: true,
+  revision: 12,
+  activeBookIds: ["world-recipes"],
+  books: {
+    "world-recipes": { /* recipes... */ }
+  }
+}
 ```
+
+The older `recipeBooks` and `activeRecipeBookIds` settings are migration inputs only and are no longer authoritative runtime storage.
 
 ## Public API
 
@@ -139,10 +161,14 @@ window.mkShadowdarkCrafting.deconstruct(actor, item);
 window.mkShadowdarkCrafting.recipeBooks.openManager();
 ```
 
+## Development Release Metadata
+
+`module.json` is the authoritative version/compatibility declaration. Repository `url`, `manifest`, and `download` fields may remain blank while release packaging is still under development; populate them when publishing installable GitHub/Foundry release assets.
+
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE.md).
