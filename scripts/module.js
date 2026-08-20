@@ -35,7 +35,7 @@ export function openCraftingApp(actor = null) {
   // single pointer action. Reuse the same application while it is rendering
   // or already open instead of constructing another window.
   if (activeApp && sameActor(activeApp.actor, target) && (openingApp || activeApp.rendered)) {
-    activeApp.bringToTop?.();
+    activeApp.bringToFront?.();
     return activeApp;
   }
 
