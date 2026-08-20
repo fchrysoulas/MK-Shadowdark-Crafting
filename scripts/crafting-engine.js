@@ -99,44 +99,6 @@ function getAllowedAbilities(recipe) {
   return Array.from(new Set(abilities.length ? abilities : ["int"]));
 }
 
-function getMaterialAllocationMissing(recipe, materialPlan) {
-  const groups = recipe.materialGroups ?? [];
-  const failed = groups[materialPlan.failedGroupIndex] ?? groups[0];
-  if (!failed) return game.i18n.localize("MKSDC.Notifications.RequirementsMissing");
-
-  return game.i18n.format("MKSDC.Requirements.MaterialGroupMissing", {
-    materials: (failed.alternatives ?? [])
-      .map((material) => `${material.name} x${material.qty}`)
-      .join(` ${game.i18n.localize("MKSDC.App.Or")} `)
-  });
-}
-
-function applyMaterialPlanToRequirements(requirements, materialPlan) {
-  const result = foundry.utils.deepClone(requirements);
-  const selections = new Map((materialPlan.selections ?? []).map((selection) => [selection.groupIndex, selection]));
-
-  result.materialGroups = (requirements.materialGroups ?? []).map((group, groupIndex) => {
-    const selection = selections.get(groupIndex);
-    if (!selection) return group;
-
-    const alternatives = group.alternatives ?? [];
-    const selectedRow = alternatives[selection.alternativeIndex] ?? selection.material;
-    return {
-      ...group,
-      selected: {
-        ...selectedRow,
-        allocations: selection.allocations
-      },
-      ok: true
-    };
-  });
-
-  result.materialAllocation = materialPlan;
-  result.ok = Boolean(materialPlan.ok && result.toolOk && result.stationOk && result.goldOk);
-  if (result.ok) result.missing = [];
-  return result;
-}
-
 function buildOutcomeMaterialAllocations(materialPlan, outcome) {
   const allocations = [];
 
@@ -243,14 +205,8 @@ export class CraftingEngine {
       resourceActors = normalizeResourceActors(actor, null);
     }
 
-    const legacyRequirements = checkRecipeRequirements(actor, recipe, { resourceActors });
-    const materialPlan = planMaterialGroups(resourceActors, recipe.materialGroups ?? []);
-    const requirements = applyMaterialPlanToRequirements(legacyRequirements, materialPlan);
-
-    if (!materialPlan.ok) {
-      requirements.ok = false;
-      requirements.missing = [getMaterialAllocationMissing(recipe, materialPlan)];
-    }
+    const requirements = checkRecipeRequirements(actor, recipe, { resourceActors });
+    const materialPlan = requirements.materialAllocation ?? planMaterialGroups(resourceActors, recipe.materialGroups ?? []);
 
     if (!requirements.ok) {
       ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RequirementsMissing"));
