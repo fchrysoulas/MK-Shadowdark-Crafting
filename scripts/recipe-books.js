@@ -1,5 +1,5 @@
 import { DEFAULT_BOOK_ID, MODULE_ID, TEMPLATES } from "./constants.js";
-import { createRecipeId, getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, mutateRecipeBooks, sanitizeRecipeData } from "./recipe-utils.js";
+import { createRecipeId, getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, mutateRecipeBooks, sanitizeRecipeData, setActiveRecipeBookIds } from "./recipe-utils.js";
 
 const BOOK_KIND = "mk-shadowdark-crafting.recipe-book";
 const BOOK_SCHEMA_VERSION = 2;
@@ -64,12 +64,21 @@ function normalizeBooksInPlace(books) {
 }
 
 async function mutateBooks(mutator) {
-  return mutateRecipeBooks(async (books) => {
+  const mutation = await mutateRecipeBooks(async (books) => {
     const result = await mutator(books);
     if (result?.cancel === true) return result;
     normalizeBooksInPlace(books);
     return result;
   });
+
+  if (mutation.changed) {
+    const activeIds = Object.entries(mutation.books)
+      .filter(([, book]) => Boolean(book?.active))
+      .map(([id]) => id);
+    await setActiveRecipeBookIds(activeIds);
+  }
+
+  return mutation;
 }
 
 export function getSavedRecipeBooks() {
