@@ -12,6 +12,7 @@ import {
 } from "./item-utils.js";
 import { getRecipeDeconstructMaterials, getRecipeEntriesForActor, hasRecipeDeconstruction, isRecipeItem, sanitizeRecipeData } from "./recipe-utils.js";
 import { aggregateRefundMaterials, normalizeRecoverableState, takeOneRefund } from "./deconstruction-refund.js";
+import { confirmDialog } from "./application-v2.js";
 
 function getCraftedFlag(item) {
   return item?.getFlag?.(MODULE_ID, FLAGS.CRAFTED) ?? null;
@@ -242,15 +243,13 @@ async function confirmDeconstruction(item, recipe, refundMaterials) {
     ? `<ul>${refundMaterials.map((material) => `<li>${escapeHtml(material.name)} x${material.qty}</li>`).join("")}</ul>`
     : `<p><em>${game.i18n.localize("MKSDC.Deconstruct.NoMaterials")}</em></p>`;
 
-  return Dialog.confirm({
+  return confirmDialog({
     title: game.i18n.format("MKSDC.Deconstruct.Title", { name: item.name }),
     content: `
       <div class="mk-sdc mk-sdc-deconstruct-dialog">
         <p>${game.i18n.format("MKSDC.Deconstruct.Content", { name: escapeHtml(item.name), recipe: escapeHtml(recipe.outputName) })}</p>
         ${materialList}
       </div>`,
-    yes: () => true,
-    no: () => false,
     defaultYes: false
   });
 }
