@@ -6,6 +6,7 @@ import { getAvailableResourceActors, getBasicMaterialTotalsForActors } from "./i
 import { checkRecipeRequirements, deleteRecipe, ensureDefaultRecipeBook, getRecipeById, getRecipeEntriesForActor } from "./recipe-utils.js";
 import { RecipeEditor } from "./recipe-editor.js";
 import { openManageRecipeBooks } from "./recipe-books.js";
+import { confirmDialog, MKApplicationV2 } from "./application-v2.js";
 
 function escapeHtml(value) {
   const div = document.createElement("div");
@@ -36,7 +37,7 @@ function clearTimer(timer) {
   if (timer) window.clearTimeout(timer);
 }
 
-export class CraftingApp extends Application {
+export class CraftingApp extends MKApplicationV2 {
   constructor(actor = null, options = {}) {
     super(options);
     this.actor = actor;
@@ -58,17 +59,22 @@ export class CraftingApp extends Application {
     this._restoreSearchAction = "search";
   }
 
-  static get defaultOptions() {
-    return foundry.utils.mergeObject(super.defaultOptions, {
-      id: "mk-shadowdark-crafting-app",
-      classes: ["mk-sdc", "mk-sdc-app"],
-      title: game.i18n.localize("MKSDC.App.Title"),
-      template: TEMPLATES.CRAFTING_APP,
-      width: 1080,
-      height: 760,
+  static DEFAULT_OPTIONS = {
+    id: "mk-shadowdark-crafting-app",
+    classes: ["mk-sdc", "mk-sdc-app"],
+    window: {
+      title: "MKSDC.App.Title",
       resizable: true
-    });
-  }
+    },
+    position: {
+      width: 1080,
+      height: 760
+    }
+  };
+
+  static PARTS = {
+    main: { template: TEMPLATES.CRAFTING_APP }
+  };
 
   async close(options = {}) {
     clearTimer(this._searchRenderTimer);
@@ -467,11 +473,9 @@ export class CraftingApp extends Application {
       const recipe = await getRecipeById(recipeId, { bookId });
       if (!recipe) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
 
-      const confirmed = await Dialog.confirm({
+      const confirmed = await confirmDialog({
         title: game.i18n.localize("MKSDC.Dialog.DeleteRecipeTitle"),
         content: `<p>${game.i18n.format("MKSDC.Dialog.DeleteRecipeContent", { name: escapeHtml(recipe.outputName) })}</p>`,
-        yes: () => true,
-        no: () => false,
         defaultYes: false
       });
 
