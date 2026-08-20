@@ -20,6 +20,18 @@ function canonicalMaterialGroups(groups = []) {
   }));
 }
 
+function getRuntimeActiveBookIds(books = {}) {
+  const entries = Object.entries(books);
+  const hasExplicitActiveState = entries.some(([, book]) => Object.hasOwn(book || {}, "active"));
+  if (hasExplicitActiveState) {
+    return entries.filter(([, book]) => book?.active === true).map(([id]) => id);
+  }
+
+  // Legacy books which genuinely predate book.active may still use the old
+  // active-ID setting until the normal migration path writes explicit flags.
+  return getActiveRecipeBookIds();
+}
+
 /**
  * Return only recipes which are eligible for normal runtime crafting.
  * Editor/deconstruction lookups deliberately remain broader in recipe-utils.
@@ -29,7 +41,7 @@ export async function getCraftableRecipeById(recipeId, options = {}) {
   if (!id) return null;
 
   const books = getRecipeBooks();
-  const activeIds = getActiveRecipeBookIds();
+  const activeIds = getRuntimeActiveBookIds(books);
   const activeSet = new Set(activeIds);
 
   if (bookId) {
