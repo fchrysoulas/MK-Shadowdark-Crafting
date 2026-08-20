@@ -70,14 +70,19 @@ globalThis.game = {
 globalThis.CONFIG = {};
 globalThis.canvas = { tokens: { placeables: [] }, scene: { tokens: [] } };
 globalThis.ui = { notifications: { warn: () => {}, info: () => {}, error: () => {} } };
+globalThis.fromUuid = async () => null;
 
 const {
+  deleteRecipe,
   getActiveRecipeBookIds,
+  getRecipeById,
   mutateRecipeBooks,
-  sanitizeOutputItemData
+  sanitizeOutputItemData,
+  setActiveRecipeBookIds
 } = await import("../scripts/recipe-utils.js");
+const { getAvailableItemTypes } = await import("../scripts/item-utils.js");
 
-test("same-client concurrent recipe book mutations are serialized without lost updates", async () => {
+test("same-client concurrent recipe book mutations are serialized without lost updates", { concurrency: false }, async () => {
   store.recipeBooks = {};
 
   await Promise.all([
@@ -94,7 +99,7 @@ test("same-client concurrent recipe book mutations are serialized without lost u
   assert.ok(store.recipeBooks.beta);
 });
 
-test("book.active is authoritative over the legacy active ID mirror", () => {
+test("book.active is authoritative over the legacy active ID mirror", { concurrency: false }, () => {
   store.recipeBooks = {
     alpha: { id: "alpha", active: true, recipes: [] },
     "legacy-book": { id: "legacy-book", active: false, recipes: [] }
@@ -104,7 +109,71 @@ test("book.active is authoritative over the legacy active ID mirror", () => {
   assert.deepEqual(getActiveRecipeBookIds(), ["alpha"]);
 });
 
-test("output snapshots retain item mechanics but strip unrelated metadata and flags", () => {
+test("setActiveRecipeBookIds synchronizes book state and the legacy compatibility mirror", { concurrency: false }, async () => {
+  store.recipeBooks = {
+    alpha: { id: "alpha", active: true, recipes: [] },
+    beta: { id: "beta", active: false, recipes: [] }
+  };
+  store.activeRecipeBookIds = ["alpha"];
+
+  await setActiveRecipeBookIds(["beta"]);
+
+  assert.equal(store.recipeBooks.alpha.active, false);
+  assert.equal(store.recipeBooks.beta.active, true);
+  assert.deepEqual(store.activeRecipeBookIds, ["beta"]);
+});
+
+test("book-aware recipe lookup resolves the requested book when IDs collide", { concurrency: false }, async () => {
+  store.recipeBooks = {
+    alpha: {
+      id: "alpha",
+      active: true,
+      recipes: [{ id: "shared-id", bookId: "alpha", outputName: "Alpha Blade", outputType: "Weapon" }]
+    },
+    beta: {
+      id: "beta",
+      active: true,
+      recipes: [{ id: "shared-id", bookId: "beta", outputName: "Beta Blade", outputType: "Weapon" }]
+    }
+  };
+
+  const recipe = await getRecipeById("shared-id", { bookId: "beta" });
+  assert.equal(recipe.outputName, "Beta Blade");
+  assert.equal(recipe.bookId, "beta");
+});
+
+test("book-scoped deletion leaves a same-ID recipe in another book untouched", { concurrency: false }, async () => {
+  store.recipeBooks = {
+    alpha: {
+      id: "alpha",
+      active: true,
+      recipes: [{ id: "shared-id", bookId: "alpha", outputName: "Alpha Blade", outputType: "Weapon" }]
+    },
+    beta: {
+      id: "beta",
+      active: true,
+      recipes: [{ id: "shared-id", bookId: "beta", outputName: "Beta Blade", outputType: "Weapon" }]
+    }
+  };
+
+  const deleted = await deleteRecipe("shared-id", { bookId: "alpha", notify: false });
+
+  assert.equal(deleted, true);
+  assert.equal(store.recipeBooks.alpha.recipes.length, 0);
+  assert.equal(store.recipeBooks.beta.recipes.length, 1);
+  assert.equal(store.recipeBooks.beta.recipes[0].outputName, "Beta Blade");
+});
+
+test("runtime Shadowdark item types do not reintroduce legacy NPC Spell", { concurrency: false }, () => {
+  globalThis.game.system.documentTypes.Item = ["Basic", "Weapon", "Armor", "NPC Attack", "Spell"];
+  const types = getAvailableItemTypes();
+
+  assert.ok(types.includes("NPC Attack"));
+  assert.ok(types.includes("Spell"));
+  assert.equal(types.includes("NPC Spell"), false);
+});
+
+test("output snapshots retain item mechanics but strip unrelated metadata and flags", { concurrency: false }, () => {
   const snapshot = sanitizeOutputItemData({
     _id: "secret-id",
     name: "Test Blade",
