@@ -92,10 +92,26 @@ export function registerSettings() {
     default: "Basic"
   });
 
+  game.settings.register(MODULE_ID, "recipeState", {
+    name: "Recipe State",
+    hint: "Unified recipe books and active-book state.",
+    scope: "world",
+    config: false,
+    type: Object,
+    default: {
+      schemaVersion: 3,
+      initialized: false,
+      revision: 0,
+      lastMutationId: "",
+      activeBookIds: [],
+      books: {}
+    }
+  });
 
+  // Legacy migration inputs. Runtime recipe storage uses recipeState.
   game.settings.register(MODULE_ID, "recipeBooks", {
-    name: "Recipe Books",
-    hint: "Saved recipe books and active world crafting recipes.",
+    name: "Recipe Books (Legacy)",
+    hint: "Legacy recipe-book storage retained for migration compatibility.",
     scope: "world",
     config: false,
     type: Object,
@@ -103,8 +119,8 @@ export function registerSettings() {
   });
 
   game.settings.register(MODULE_ID, "activeRecipeBookIds", {
-    name: "Active Recipe Books",
-    hint: "Recipe book IDs currently used by the Crafting UI.",
+    name: "Active Recipe Books (Legacy)",
+    hint: "Legacy active-book storage retained for migration compatibility.",
     scope: "world",
     config: false,
     type: Array,
