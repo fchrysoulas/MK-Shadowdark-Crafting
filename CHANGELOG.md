@@ -2,6 +2,10 @@
 
 All notable changes to MK Shadowdark Crafting are documented here.
 
+## 0.4.3
+
+- Extended Foundry VTT compatibility through v14 while retaining v13 as the minimum supported version.
+
 ## 0.4.2
 
 - Removed Foundry VTT v12 compatibility and now require Foundry VTT v13.
