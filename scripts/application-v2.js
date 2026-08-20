@@ -1,11 +1,9 @@
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 /**
- * Thin ApplicationV2 base used while the module migrates from ApplicationV1.
- *
- * Subclasses can keep their existing getData/activateListeners methods during
- * the transition. Rendering and form submission are handled by ApplicationV2,
- * while _onRender adapts the rendered root to the existing jQuery listeners.
+ * Shared ApplicationV2 base for the module's Handlebars applications.
+ * Subclasses may keep their existing getData method while using the modern
+ * ApplicationV2 context, parts, actions, and render lifecycle.
  */
 export class MKApplicationV2 extends HandlebarsApplicationMixin(ApplicationV2) {
   async _prepareContext(options) {
@@ -13,35 +11,24 @@ export class MKApplicationV2 extends HandlebarsApplicationMixin(ApplicationV2) {
     const data = typeof this.getData === "function" ? await this.getData(options) : {};
     return { ...context, ...(data || {}) };
   }
-
-  _onRender(context, options) {
-    super._onRender(context, options);
-    if (typeof this.activateListeners !== "function") return;
-    const html = globalThis.jQuery ? globalThis.jQuery(this.element) : globalThis.$?.(this.element);
-    if (html) this.activateListeners(html);
-  }
-
-  // Compatibility hook for existing subclasses. ApplicationV2 itself does not
-  // provide the ApplicationV1 activateListeners lifecycle method.
-  activateListeners(_html) {}
 }
 
-async function legacyFormHandler(_event, form, formData) {
+async function applicationFormHandler(_event, form, formData) {
   if (typeof this._updateObject !== "function") return;
   const flat = Object.fromEntries(formData.entries());
   return this._updateObject({ currentTarget: form }, flat);
 }
 
 /**
- * ApplicationV2 form base. The root application element is the form, and
- * submission is routed through the modern ApplicationV2 form handler.
+ * ApplicationV2 form base. The application root owns the form and submission
+ * is routed through the native ApplicationV2 form handler.
  */
 export class MKFormApplicationV2 extends MKApplicationV2 {
   static DEFAULT_OPTIONS = {
     tag: "form",
     form: {
       closeOnSubmit: true,
-      handler: legacyFormHandler
+      handler: applicationFormHandler
     }
   };
 }
