@@ -9,7 +9,7 @@ async function read(relativePath) {
   return readFile(path.join(root, relativePath), "utf8");
 }
 
-test("primary module applications use ApplicationV2 bases", async () => {
+test("primary module applications use native ApplicationV2 bases and actions", async () => {
   const crafting = await read("scripts/crafting-app.js");
   const editor = await read("scripts/recipe-editor.js");
   const books = await read("scripts/recipe-books.js");
@@ -22,6 +22,8 @@ test("primary module applications use ApplicationV2 bases", async () => {
 
   for (const source of [crafting, editor, books]) {
     assert.doesNotMatch(source, /extends\s+(?:Application|FormApplication)\b/);
+    assert.doesNotMatch(source, /activateListeners\s*\(/);
+    assert.match(source, /actions:\s*\{/);
   }
 });
 
@@ -39,7 +41,7 @@ test("recipe editor uses ApplicationV2 form ownership without a nested form", as
   const template = await read("templates/recipe-editor.hbs");
 
   assert.match(base, /tag:\s*"form"/);
-  assert.match(base, /handler:\s*legacyFormHandler/);
+  assert.match(base, /handler:\s*applicationFormHandler/);
   assert.doesNotMatch(template, /<form\b/i);
   assert.match(template.trimStart(), /^<div\b/);
 });
