@@ -31,6 +31,10 @@ function sanitizeIds(ids, books) {
   ));
 }
 
+function equalJson(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 function normalizeStoredState(raw = {}) {
   const books = sanitizeBooks(raw.books);
   const activeBookIds = sanitizeIds(raw.activeBookIds, books);
@@ -51,9 +55,8 @@ function readStoredState() {
 
 function readLegacyState() {
   const books = sanitizeBooks(readSetting("recipeBooks", {}));
-  const legacyIds = Array.isArray(readSetting("activeRecipeBookIds", []))
-    ? readSetting("activeRecipeBookIds", [])
-    : [];
+  const rawLegacyIds = readSetting("activeRecipeBookIds", []);
+  const legacyIds = Array.isArray(rawLegacyIds) ? rawLegacyIds : [];
   const activeFromBooks = Object.entries(books)
     .filter(([, book]) => Boolean(book?.active))
     .map(([id]) => id);
@@ -118,6 +121,10 @@ async function performMutation(mutator, maxAttempts = 4) {
     const result = await mutator(draft);
     synchronizeBookActiveFlags(draft);
 
+    if (equalJson(draft.books, base.books) && equalJson(draft.activeBookIds, base.activeBookIds)) {
+      return { state: synchronizeBookActiveFlags(base), result };
+    }
+
     const latestBeforeWrite = readStoredState();
     if (latestBeforeWrite.revision !== base.revision || latestBeforeWrite.lastMutationId !== base.lastMutationId) {
       continue;
@@ -163,6 +170,10 @@ export async function replaceRecipeBooks(books) {
 
 export async function replaceActiveRecipeBookIds(ids = []) {
   const requested = Array.from(new Set((ids || []).map((id) => String(id || "").trim()).filter(Boolean)));
+  const current = getRecipeState();
+  const nextIds = requested.filter((id) => current.books[id]);
+  if (equalJson(nextIds, current.activeBookIds)) return current.activeBookIds.slice();
+
   const result = await mutateRecipeState((state) => {
     state.activeBookIds = requested.filter((id) => state.books[id]);
     return state.activeBookIds.slice();
