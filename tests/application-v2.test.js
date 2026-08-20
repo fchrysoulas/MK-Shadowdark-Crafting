@@ -57,3 +57,9 @@ test("modern DialogV2 helper is the shared dialog API", async () => {
   assert.match(deconstruction, /confirmDialog/);
   assert.match(books, /DialogV2\.wait/);
 });
+
+test("single-window guard uses the ApplicationV2 focus API", async () => {
+  const moduleSource = await read("scripts/module.js");
+  assert.match(moduleSource, /bringToFront\?\.\(\)/);
+  assert.doesNotMatch(moduleSource, /bringToTop\?\.\(\)/);
+});
