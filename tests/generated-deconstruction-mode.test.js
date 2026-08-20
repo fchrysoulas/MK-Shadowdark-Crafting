@@ -31,7 +31,7 @@ test("generated recovery follows the actual substitute consumed", () => {
   ]);
 
   assert.deepEqual(pool, [
-    { name: "Wood", uuid: "", type: "Basic", img: "", qty: 1 }
+    { name: "Wood", uuid: "", type: "Basic", img: "icons/svg/item-bag.svg", qty: 1 }
   ]);
   assert.equal(pool.some((entry) => entry.name === "Iron"), false);
 });
