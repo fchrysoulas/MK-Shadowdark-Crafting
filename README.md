@@ -171,4 +171,4 @@ See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-MIT. See [LICENSE](LICENSE.md).
+MIT. See [LICENSE](LICENSE).
