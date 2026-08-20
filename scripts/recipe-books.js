@@ -1,5 +1,5 @@
 import { DEFAULT_BOOK_ID, MODULE_ID, TEMPLATES } from "./constants.js";
-import { createRecipeId, getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, sanitizeRecipeData, setActiveRecipeBookIds, setRecipeBooks } from "./recipe-utils.js";
+import { createRecipeId, getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, mutateRecipeBooks, sanitizeRecipeData, setActiveRecipeBookIds } from "./recipe-utils.js";
 
 const BOOK_KIND = "mk-shadowdark-crafting.recipe-book";
 const BOOK_SCHEMA_VERSION = 2;
@@ -56,18 +56,33 @@ function normalizeBook(raw = {}, fallback = {}) {
   };
 }
 
-export function getSavedRecipeBooks() {
-  return getRecipeBooks();
+function normalizeBooksInPlace(books) {
+  for (const [id, book] of Object.entries(books || {})) {
+    books[id] = normalizeBook({ ...book, id });
+  }
+  return books;
 }
 
-async function writeBooks(books) {
-  const normalized = {};
-  for (const [id, book] of Object.entries(books || {})) {
-    normalized[id] = normalizeBook({ ...book, id });
+async function mutateBooks(mutator) {
+  const mutation = await mutateRecipeBooks(async (books) => {
+    const result = await mutator(books);
+    if (result?.cancel === true) return result;
+    normalizeBooksInPlace(books);
+    return result;
+  });
+
+  if (mutation.changed) {
+    const activeIds = Object.entries(mutation.books)
+      .filter(([, book]) => Boolean(book?.active))
+      .map(([id]) => id);
+    await setActiveRecipeBookIds(activeIds);
   }
-  await setRecipeBooks(normalized);
-  await setActiveRecipeBookIds(Object.entries(normalized).filter(([, book]) => book.active).map(([id]) => id));
-  return normalized;
+
+  return mutation;
+}
+
+export function getSavedRecipeBooks() {
+  return getRecipeBooks();
 }
 
 function getLegacyRecipeItems() {
@@ -98,9 +113,9 @@ export async function saveRecipeBook(name = null) {
   }
 
   const book = await buildRecipeBookData({ name, active: false });
-  const books = getSavedRecipeBooks();
-  books[book.id] = book;
-  await writeBooks(books);
+  await mutateBooks((books) => {
+    books[book.id] = book;
+  });
   ui.notifications.info(game.i18n.format("MKSDC.Notifications.RecipeBookSaved", { name: book.name, count: book.recipeCount }));
   return book;
 }
@@ -124,9 +139,6 @@ export async function importRecipeBookData(data, { mode = "create", activate = t
   }
 
   const raw = typeof data === "string" ? JSON.parse(data) : foundry.utils.deepClone(data);
-  const books = getSavedRecipeBooks();
-
-  // Accept either a single exported book or an object containing a recipes array.
   const incomingBase = raw?.kind === BOOK_KIND || Array.isArray(raw?.recipes)
     ? raw
     : { name: raw?.name || game.i18n.localize("MKSDC.RecipeBooks.ImportedName"), recipes: [] };
@@ -141,52 +153,54 @@ export async function importRecipeBookData(data, { mode = "create", activate = t
   let skipped = 0;
   let book = null;
 
-  if (mode === "merge") {
-    const existing = books[id] ?? null;
-    const nextRecipes = Array.isArray(existing?.recipes) ? existing.recipes.map((recipe) => sanitizeRecipeData(recipe, { bookId: id, id: recipe.id })) : [];
-    const indexById = new Map(nextRecipes.map((recipe, index) => [String(recipe.id), index]));
+  await mutateBooks((books) => {
+    if (mode === "merge") {
+      const existing = books[id] ?? null;
+      const nextRecipes = Array.isArray(existing?.recipes)
+        ? existing.recipes.map((recipe) => sanitizeRecipeData(recipe, { bookId: id, id: recipe.id }))
+        : [];
+      const indexById = new Map(nextRecipes.map((recipe, index) => [String(recipe.id), index]));
 
-    for (const incomingRecipe of incomingBase.recipes || []) {
-      if (!incomingRecipe) {
-        skipped += 1;
-        continue;
+      for (const incomingRecipe of incomingBase.recipes || []) {
+        if (!incomingRecipe) {
+          skipped += 1;
+          continue;
+        }
+
+        const recipe = sanitizeRecipeData(incomingRecipe, { bookId: id, id: incomingRecipe.id || createRecipeId() });
+        const existingIndex = indexById.get(String(recipe.id));
+        if (existingIndex === undefined) {
+          nextRecipes.push(recipe);
+          indexById.set(String(recipe.id), nextRecipes.length - 1);
+          created += 1;
+        } else {
+          nextRecipes[existingIndex] = recipe;
+          updated += 1;
+        }
       }
 
-      const recipe = sanitizeRecipeData(incomingRecipe, { bookId: id, id: incomingRecipe.id || createRecipeId() });
-      const existingIndex = indexById.get(String(recipe.id));
-      if (existingIndex === undefined) {
-        nextRecipes.push(recipe);
-        indexById.set(String(recipe.id), nextRecipes.length - 1);
-        created += 1;
-      } else {
-        nextRecipes[existingIndex] = recipe;
-        updated += 1;
-      }
+      book = normalizeBook({
+        ...incomingBase,
+        ...(existing || {}),
+        id,
+        name: incomingBase.name || existing?.name || game.i18n.localize("MKSDC.RecipeBooks.ImportedName"),
+        active: activate || Boolean(existing?.active),
+        recipes: nextRecipes,
+        createdAt: existing?.createdAt || incomingBase.createdAt,
+        updatedAt: nowIso()
+      }, { name: game.i18n.localize("MKSDC.RecipeBooks.ImportedName") });
+    } else {
+      book = normalizeBook({
+        ...incomingBase,
+        id,
+        active: activate,
+        recipes: (incomingBase.recipes || []).filter(Boolean).map((recipe) => ({ ...recipe, id: undefined, bookId: id }))
+      }, { name: game.i18n.localize("MKSDC.RecipeBooks.ImportedName") });
+      created = book.recipeCount;
     }
 
-    book = normalizeBook({
-      ...incomingBase,
-      ...(existing || {}),
-      id,
-      name: incomingBase.name || existing?.name || game.i18n.localize("MKSDC.RecipeBooks.ImportedName"),
-      active: activate || Boolean(existing?.active),
-      recipes: nextRecipes,
-      createdAt: existing?.createdAt || incomingBase.createdAt,
-      updatedAt: nowIso()
-    }, { name: game.i18n.localize("MKSDC.RecipeBooks.ImportedName") });
-  } else {
-    book = normalizeBook({
-      ...incomingBase,
-      id,
-      active: activate,
-      recipes: (incomingBase.recipes || []).filter(Boolean).map((recipe) => ({ ...recipe, id: undefined, bookId: id }))
-    }, { name: game.i18n.localize("MKSDC.RecipeBooks.ImportedName") });
-    created = book.recipeCount;
-  }
-
-  books[id] = book;
-  await writeBooks(books);
-  if (activate) await setActiveRecipeBookIds(Array.from(new Set([...getActiveRecipeBookIds(), id])));
+    books[id] = book;
+  });
 
   ui.notifications.info(game.i18n.format("MKSDC.Notifications.RecipeBookImported", {
     name: book.name,
@@ -204,18 +218,23 @@ export async function renameSavedRecipeBook(bookId, name) {
   }
 
   const id = String(bookId || "").trim();
-  const books = getSavedRecipeBooks();
-  const book = books[id];
-  if (!book) {
+  let renamed = null;
+  await mutateBooks((books) => {
+    const book = books[id];
+    if (!book) return { cancel: true };
+    book.name = sanitizeBookName(name);
+    book.updatedAt = nowIso();
+    renamed = normalizeBook(book);
+    books[id] = renamed;
+  });
+
+  if (!renamed) {
     ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.InvalidRecipeBook"));
     return null;
   }
 
-  book.name = sanitizeBookName(name);
-  book.updatedAt = nowIso();
-  await writeBooks(books);
-  ui.notifications.info(game.i18n.format("MKSDC.Notifications.RecipeBookRenamed", { name: book.name }));
-  return book;
+  ui.notifications.info(game.i18n.format("MKSDC.Notifications.RecipeBookRenamed", { name: renamed.name }));
+  return renamed;
 }
 
 export async function deleteSavedRecipeBook(bookId) {
@@ -225,16 +244,19 @@ export async function deleteSavedRecipeBook(bookId) {
   }
 
   const id = String(bookId || "").trim();
-  const books = getSavedRecipeBooks();
-  const book = books[id];
-  if (!book) {
+  let deletedBook = null;
+  await mutateBooks((books) => {
+    if (!books[id]) return { cancel: true };
+    deletedBook = books[id];
+    delete books[id];
+  });
+
+  if (!deletedBook) {
     ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.InvalidRecipeBook"));
     return false;
   }
 
-  delete books[id];
-  await writeBooks(books);
-  ui.notifications.info(game.i18n.format("MKSDC.Notifications.RecipeBookDeleted", { name: book.name || id }));
+  ui.notifications.info(game.i18n.format("MKSDC.Notifications.RecipeBookDeleted", { name: deletedBook.name || id }));
   return true;
 }
 
@@ -245,37 +267,43 @@ export async function updateSavedRecipeBookFromWorld(bookId) {
   }
 
   const id = String(bookId || "").trim();
-  const books = getSavedRecipeBooks();
-  const existing = books[id];
-  if (!existing) {
+  const activeRecipes = getRecipeEntriesForActor(null, { activeOnly: true })
+    .filter((entry) => entry.bookId === id)
+    .map((entry) => entry.recipe);
+  let updatedBook = null;
+
+  await mutateBooks((books) => {
+    const existing = books[id];
+    if (!existing) return { cancel: true };
+    const sourceRecipes = activeRecipes.length ? activeRecipes : (Array.isArray(existing.recipes) ? existing.recipes : []);
+
+    updatedBook = normalizeBook({
+      ...existing,
+      recipes: sourceRecipes.map((recipe) => ({ ...recipe, bookId: id })),
+      updatedAt: nowIso()
+    });
+    books[id] = updatedBook;
+  });
+
+  if (!updatedBook) {
     ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.InvalidRecipeBook"));
     return null;
   }
 
-  const activeRecipes = getRecipeEntriesForActor(null, { activeOnly: true })
-    .filter((entry) => entry.bookId === id)
-    .map((entry) => entry.recipe);
-  const sourceRecipes = activeRecipes.length ? activeRecipes : (Array.isArray(existing.recipes) ? existing.recipes : []);
-
-  books[id] = normalizeBook({
-    ...existing,
-    recipes: sourceRecipes.map((recipe) => ({ ...recipe, bookId: id })),
-    updatedAt: nowIso()
-  });
-
-  await writeBooks(books);
-  ui.notifications.info(game.i18n.format("MKSDC.Notifications.RecipeBookUpdated", { name: books[id].name, count: books[id].recipeCount }));
-  return books[id];
+  ui.notifications.info(game.i18n.format("MKSDC.Notifications.RecipeBookUpdated", { name: updatedBook.name, count: updatedBook.recipeCount }));
+  return updatedBook;
 }
 
 async function setBookActive(bookId, active) {
   const id = String(bookId || "").trim();
-  const books = getSavedRecipeBooks();
-  if (!books[id]) return false;
-  books[id].active = Boolean(active);
-  books[id].updatedAt = nowIso();
-  await writeBooks(books);
-  return true;
+  let changed = false;
+  await mutateBooks((books) => {
+    if (!books[id]) return { cancel: true };
+    books[id].active = Boolean(active);
+    books[id].updatedAt = nowIso();
+    changed = true;
+  });
+  return changed;
 }
 
 async function migrateLegacyItemsToBook({ deleteItems = false } = {}) {
@@ -298,10 +326,9 @@ async function migrateLegacyItemsToBook({ deleteItems = false } = {}) {
     recipes: items.map((item) => ({ ...getRecipeData(item), id: undefined, bookId: id }))
   });
 
-  const books = getSavedRecipeBooks();
-  books[id] = book;
-  await writeBooks(books);
-  await setActiveRecipeBookIds(Array.from(new Set([...getActiveRecipeBookIds(), id])));
+  await mutateBooks((books) => {
+    books[id] = book;
+  });
 
   if (deleteItems) await Item.deleteDocuments(items.map((item) => item.id));
 
