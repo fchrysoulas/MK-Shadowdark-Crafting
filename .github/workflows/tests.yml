@@ -20,5 +20,11 @@ jobs:
         with:
           node-version: 22
 
+      - name: Check runtime JavaScript syntax
+        run: |
+          for file in scripts/*.js; do
+            node --check "$file"
+          done
+
       - name: Run regression tests
         run: node --experimental-default-type=module --test tests/*.test.js
