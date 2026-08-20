@@ -47,7 +47,10 @@ export class CraftingApp extends Application {
     this.selectedRecipeId = options.selectedRecipeId ?? null;
     this.mode = options.mode ?? "craft";
     this.deconstructSearchTerm = options.deconstructSearchTerm ?? "";
-    this.selectedResourceActorIds = Array.isArray(options.selectedResourceActorIds) ? options.selectedResourceActorIds.slice() : null;
+    const primaryResourceId = String(actor?.uuid || actor?.id || actor?.name || "").trim();
+    this.selectedResourceActorIds = Array.isArray(options.selectedResourceActorIds)
+      ? options.selectedResourceActorIds.slice()
+      : (primaryResourceId ? [primaryResourceId] : null);
     this._searchRenderTimer = null;
     this._restoreSearchFocus = false;
     this._searchSelectionStart = null;
@@ -158,13 +161,12 @@ export class CraftingApp extends Application {
     return haystack.includes(needle);
   }
 
-
   _getResourceActorState() {
     const available = getAvailableResourceActors(this.actor);
     const availableIds = new Set(available.map((entry) => entry.id));
 
     if (this.selectedResourceActorIds === null) {
-      this.selectedResourceActorIds = available.map((entry) => entry.id);
+      this.selectedResourceActorIds = available.filter((entry) => entry.primary).map((entry) => entry.id);
     } else {
       this.selectedResourceActorIds = this.selectedResourceActorIds
         .map((id) => String(id || "").trim())
@@ -194,7 +196,10 @@ export class CraftingApp extends Application {
   }
 
   async getData() {
-    await ensureDefaultRecipeBook();
+    // World-scoped recipe initialization is a GM responsibility. Player
+    // rendering must remain read-only so a fresh install cannot throw a
+    // permission error simply by opening the Crafting App.
+    if (game.user.isGM) await ensureDefaultRecipeBook();
     const actor = this.actor;
     const resourceState = this._getResourceActorState();
     const recipeEntries = actor ? getRecipeEntriesForActor(actor) : [];
@@ -411,8 +416,12 @@ export class CraftingApp extends Application {
       const recipeId = button.dataset.recipeId || button.dataset.recipeUuid;
       const bookId = button.dataset.bookId || "";
       button.disabled = true;
-      await CraftingEngine.craft(this.actor, recipeId, { bookId, resourceActorIds: this._getSelectedResourceActorIds() });
-      this.render(false);
+      try {
+        await CraftingEngine.craft(this.actor, recipeId, { bookId, resourceActorIds: this._getSelectedResourceActorIds() });
+      } finally {
+        button.disabled = false;
+        this.render(false);
+      }
     });
 
     html.find("[data-action='deconstruct']").on("click", async (event) => {
@@ -423,8 +432,12 @@ export class CraftingApp extends Application {
       const item = itemId ? this.actor.items?.get?.(itemId) : null;
       if (!item) return ui.notifications.warn(game.i18n.localize("MKSDC.Deconstruct.NoItem"));
       button.disabled = true;
-      await deconstructItem(this.actor, item, { skipConfirm: true });
-      this.render(false);
+      try {
+        await deconstructItem(this.actor, item, { skipConfirm: true });
+      } finally {
+        button.disabled = false;
+        this.render(false);
+      }
     });
 
     html.find("[data-action='create-recipe']").on("click", async (event) => {
