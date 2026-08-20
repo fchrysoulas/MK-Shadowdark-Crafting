@@ -1,6 +1,7 @@
 import { MODULE_ID, TEMPLATES, ABILITIES } from "./constants.js";
 import { deleteRecipe, getEditableRecipeBookId, getRecipeBooks, getRecipeData, normalizeRecipeAbilities, sanitizeMaterialChoice, sanitizeOutputItemData, sanitizeRecipeData, upsertRecipe } from "./recipe-utils.js";
 import { getAvailableItemTypes, getItemQuantity, resolveItemType } from "./item-utils.js";
+import { confirmDialog, MKFormApplicationV2 } from "./application-v2.js";
 
 function toArrayFromExpanded(value) {
   if (Array.isArray(value)) return value;
@@ -217,26 +218,29 @@ function extractMaterialGroupsFromForm(form) {
     .filter((group) => group.alternatives.length > 0);
 }
 
-export class RecipeEditor extends FormApplication {
+export class RecipeEditor extends MKFormApplicationV2 {
   constructor(recipe = null, options = {}) {
-    super(recipe, options);
+    super(options);
     this.recipe = recipe ? getRecipeData(recipe) : null;
     this._nextMaterialGroupIndex = 0;
     this._nextDeconstructMaterialIndex = 0;
   }
 
-  static get defaultOptions() {
-    return foundry.utils.mergeObject(super.defaultOptions, {
-      id: "mk-shadowdark-recipe-editor",
-      classes: ["mk-sdc", "mk-sdc-editor"],
-      title: game.i18n.localize("MKSDC.Editor.Title"),
-      template: TEMPLATES.RECIPE_EDITOR,
-      width: 760,
-      height: "auto",
-      resizable: true,
-      closeOnSubmit: true
-    });
-  }
+  static DEFAULT_OPTIONS = {
+    id: "mk-shadowdark-recipe-editor",
+    classes: ["mk-sdc", "mk-sdc-editor", "mk-sdc-form"],
+    window: {
+      title: "MKSDC.Editor.Title",
+      resizable: true
+    },
+    position: {
+      width: 760
+    }
+  };
+
+  static PARTS = {
+    main: { template: TEMPLATES.RECIPE_EDITOR }
+  };
 
   async getData() {
     const recipe = this.recipe ? getRecipeData(this.recipe) : sanitizeRecipeData({ bookId: getEditableRecipeBookId() });
@@ -424,11 +428,9 @@ export class RecipeEditor extends FormApplication {
       event.preventDefault();
       if (!this.recipe?.id) return;
 
-      const confirmed = await Dialog.confirm({
+      const confirmed = await confirmDialog({
         title: game.i18n.localize("MKSDC.Dialog.DeleteRecipeTitle"),
         content: `<p>${game.i18n.format("MKSDC.Dialog.DeleteRecipeContent", { name: escapeHtml(this.recipe.outputName) })}</p>`,
-        yes: () => true,
-        no: () => false,
         defaultYes: false
       });
 
@@ -505,7 +507,7 @@ export class RecipeEditor extends FormApplication {
     }
 
     const expanded = foundry.utils.expandObject(formData);
-    const form = event?.currentTarget ?? this.form;
+    const form = event?.currentTarget ?? this.element;
     const materialGroupsFromDom = extractMaterialGroupsFromForm(form);
     const materialGroupsFromFormData = extractMaterialGroups(expanded);
     const materialGroups = materialGroupsFromDom.length || form?.querySelector?.("[data-material-group]")
