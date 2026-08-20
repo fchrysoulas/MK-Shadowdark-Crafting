@@ -6,9 +6,9 @@ MK Shadowdark Crafting stores recipes in **Recipe Books** saved to world setting
 
 ## Compatibility
 
-- Foundry VTT: v13
-- Shadowdark RPG: 3.5.0 or later
-- Current module version: 0.4.2
+- Foundry VTT: **v13-v14**
+- Shadowdark RPG: **3.5.0 or later**, including current 4.x releases
+- Current module version: **0.4.3**
 
 ## Features
 
@@ -19,9 +19,11 @@ MK Shadowdark Crafting stores recipes in **Recipe Books** saved to world setting
 - Search, sorting, Dense List, and Master Detail crafting layouts
 - Drag-and-drop output items and material items
 - Substitute material groups, such as `Rope x1 OR Bandages x3`
-- Shared resource sources from checked scene character inventories
+- Shared resource sources from explicitly checked scene character inventories
 - Material and gold checking with configurable failure and critical-result consumption
-- Deconstruct mode for recovering configured materials from owned inventory items
+- Transactional crafting and deconstruction with rollback on internal mutation failures
+- Multi-stack and multi-actor material allocation
+- Deconstruct mode with finite recovery pools for crafted batches
 - Chat cards for crafting and deconstruction results
 - Dice So Nice support when the module is active
 - Recipe Book import and export as JSON
@@ -51,16 +53,26 @@ window.mkShadowdarkCrafting.open(game.user.character);
 1. Open the Crafting Panel for an actor.
 2. Make sure the header is in Craft mode.
 3. Choose a recipe from the active Recipe Books.
-4. If other scene character inventories are available, check the Resource Sources that can contribute materials.
+4. If other scene character inventories are available, explicitly check the Resource Sources that may contribute materials.
 5. Click Craft, choose an allowed ability and roll mode, then resolve the roll.
 
-On success, the module consumes the required materials and creates the crafted item on the actor. On failure, material loss depends on the world settings. Critical success and critical failure behavior can also be configured in settings.
+Only the primary crafter is selected as a resource source by default. Additional actors are opt-in.
+
+The module plans all material groups against one shared inventory ledger before crafting. The same quantity cannot satisfy multiple requirement groups, substitute groups can backtrack to find a valid global combination, and duplicate stacks can contribute to the same requirement.
+
+On success, the module consumes the planned materials and creates the crafted item on the actor. On failure, material loss depends on the world settings. Critical success and critical failure behavior can also be configured in settings.
+
+Crafting resource changes are treated transactionally. If an internal item, currency, or output-creation mutation fails, the module attempts to restore the pre-craft inventory state and does not report the craft as successful.
 
 ## Deconstruction
 
 Open the Crafting Panel and switch to Deconstruct mode using the recycle button in the header.
 
-Deconstruct mode lists owned inventory items that have deconstruction data. Deconstructing removes one owned item and returns the configured recovered materials. New recipes can define deconstruction materials directly; if left empty, the editor generates a default recovery list from half of the first craft material choices, rounded up.
+Deconstruct mode lists owned inventory items that have deconstruction data. Deconstructing removes one owned item and returns the configured recovered materials.
+
+For automatically generated recovery on newly crafted multi-output batches, the module calculates a **finite recoverable pool for the whole batch**. Rounding occurs once at the batch level and each deconstructed output reduces the remaining pool, so deconstruction cannot manufacture extra resources by repeatedly rounding each output upward.
+
+Legacy/untracked items use a conservative fallback calculation. Source-item removal and recovered-material changes are also transactional and are rolled back if the recovery operation fails partway through.
 
 ## Recipe Books
 
@@ -77,7 +89,15 @@ From the Recipe Book Manager, a GM can:
 - Delete a book
 - Migrate old item-based recipes into a new recipe book
 
-Only active books appear in the Crafting UI.
+Only active books appear in the normal Crafting UI.
+
+### Recipe Book visibility
+
+Recipe Books are stored in a **world-scoped Foundry setting**. Inactive books are hidden from the normal Crafting UI, but **inactive does not mean secret**. Client-readable world settings must not be used to store GM secrets, unrevealed plot information, or hidden item text that must remain inaccessible to players.
+
+Output item snapshots stored inside recipe data are deliberately reduced to the fields needed to recreate the crafted item: item name, type, image, Shadowdark `system` data, and sanitized embedded effects. Ownership, folders, document IDs, arbitrary module flags, effect origins, and third-party effect flags are not retained in the snapshot.
+
+If a future feature requires genuinely secret recipe books, it should use GM-only document/storage semantics rather than relying on inactive world-setting entries.
 
 ## Creating Recipes
 
@@ -122,11 +142,13 @@ Recipe books are stored in:
 game.settings.get("mk-shadowdark-crafting", "recipeBooks");
 ```
 
-Active recipe book IDs are stored in:
+Each book's `active` field is the module's authoritative active-state source. The historical setting below is retained as a compatibility mirror for older macros/integrations:
 
 ```js
 game.settings.get("mk-shadowdark-crafting", "activeRecipeBookIds");
 ```
+
+Recipe Book mutations are serialized per client and re-read the current world state immediately before modification to reduce stale whole-setting overwrites when several book operations happen close together.
 
 ## Public API
 
@@ -138,6 +160,12 @@ window.mkShadowdarkCrafting.craft(actor, recipeId);
 window.mkShadowdarkCrafting.deconstruct(actor, item);
 window.mkShadowdarkCrafting.recipeBooks.openManager();
 ```
+
+## Installation / Release Metadata
+
+The repository URL is recorded in `module.json`.
+
+`manifest` and `download` remain intentionally blank while this repository does not publish a packaged Foundry release asset. They should only be populated when a release workflow or manual release process produces stable `module.json` and module ZIP URLs. See [RELEASING.md](RELEASING.md).
 
 ## Changelog
 
