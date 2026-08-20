@@ -3,7 +3,7 @@ import { setting } from "./settings.js";
 import { CraftingEngine } from "./crafting-engine.js";
 import { deconstructItem, getInventoryDeconstructionEntriesForActor } from "./deconstruction-engine.js";
 import { getAvailableResourceActors, getBasicMaterialTotalsForActors } from "./item-utils.js";
-import { checkRecipeRequirements, deleteRecipe, ensureDefaultRecipeBook, getRecipeById, getRecipeEntriesForActor } from "./recipe-utils.js";
+import { checkRecipeRequirements, deleteRecipe, ensureDefaultRecipeBook, getRecipeBooks, getRecipeById, getRecipeEntriesForActor } from "./recipe-utils.js";
 import { RecipeEditor } from "./recipe-editor.js";
 import { openManageRecipeBooks } from "./recipe-books.js";
 
@@ -313,7 +313,7 @@ export class CraftingApp extends Application {
       hasVisibleRecipes: visibleRecipes.length > 0,
       isGM: game.user.isGM,
       allowPlayerCrafting: setting("allowPlayerCrafting"),
-      hasSavedRecipeBooks: Object.keys(setting("recipeBooks") || {}).length > 0,
+      hasSavedRecipeBooks: Object.keys(getRecipeBooks()).length > 0,
       checkTools: setting("checkTools"),
       checkStations: setting("checkStations"),
       useGoldCost: setting("useGoldCost"),
