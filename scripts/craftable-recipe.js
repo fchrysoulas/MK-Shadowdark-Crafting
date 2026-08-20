@@ -20,6 +20,10 @@ function canonicalMaterialGroups(groups = []) {
   }));
 }
 
+function canonicalMaterials(materials = []) {
+  return (materials || []).map(canonicalMaterial);
+}
+
 function getRuntimeActiveBookIds(books = {}) {
   const entries = Object.entries(books);
   const hasExplicitActiveState = entries.some(([, book]) => Object.hasOwn(book || {}, "active"));
@@ -69,9 +73,9 @@ export async function getCraftableRecipeById(recipeId, options = {}) {
 }
 
 /**
- * Stable comparison of the recipe fields which can change the economic or
- * mechanical result of a crafting attempt. Presentation-only fields such as
- * notes/category/time are intentionally excluded.
+ * Stable comparison of the recipe fields which can change the economic,
+ * mechanical, output, or future deconstruction result of a crafting attempt.
+ * Presentation-only fields such as notes/category/time are excluded.
  */
 export function getRecipeExecutionSignature(recipe = {}) {
   return JSON.stringify({
@@ -81,6 +85,7 @@ export function getRecipeExecutionSignature(recipe = {}) {
     outputName: String(recipe.outputName || ""),
     outputUuid: String(recipe.outputUuid || ""),
     outputType: String(recipe.outputType || ""),
+    outputImg: String(recipe.outputImg || ""),
     outputQty: Math.max(1, Number(recipe.outputQty) || 1),
     outputItemData: recipe.outputItemData ?? null,
     dc: Math.max(1, Number(recipe.dc) || 1),
@@ -88,6 +93,10 @@ export function getRecipeExecutionSignature(recipe = {}) {
     toolRequired: String(recipe.toolRequired || ""),
     stationRequired: String(recipe.stationRequired || ""),
     materialGroups: canonicalMaterialGroups(recipe.materialGroups),
-    goldCost: Math.max(0, Number(recipe.goldCost) || 0)
+    goldCost: Math.max(0, Number(recipe.goldCost) || 0),
+    failureMode: String(recipe.failureMode || ""),
+    deconstructEnabled: recipe.deconstructEnabled !== false,
+    deconstructGenerated: recipe.deconstructGenerated === true,
+    deconstructMaterials: canonicalMaterials(recipe.deconstructMaterials)
   });
 }
