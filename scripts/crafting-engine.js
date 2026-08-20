@@ -1,7 +1,9 @@
 import { MODULE_ID } from "./constants.js";
 import { setting } from "./settings.js";
 import { checkRecipeRequirements, getRecipeById } from "./recipe-utils.js";
-import { consumeGoldFromActors, consumeOwnedMaterialFromActors, createActorItemFromRecipe, getAbilityMod, getResourceActorsFromIds, normalizeResourceActors } from "./item-utils.js";
+import { createActorItemFromRecipe, getAbilityMod, getResourceActorsFromIds, normalizeResourceActors } from "./item-utils.js";
+import { planMaterialGroups, sliceMaterialAllocations } from "./material-allocation.js";
+import { ResourceTransaction } from "./resource-transaction.js";
 import { postCraftingChatCard } from "./chat.js";
 import { showDiceSoNiceRoll } from "./dice-so-nice.js";
 
@@ -97,6 +99,66 @@ function getAllowedAbilities(recipe) {
   return Array.from(new Set(abilities.length ? abilities : ["int"]));
 }
 
+function getMaterialAllocationMissing(recipe, materialPlan) {
+  const groups = recipe.materialGroups ?? [];
+  const failed = groups[materialPlan.failedGroupIndex] ?? groups[0];
+  if (!failed) return game.i18n.localize("MKSDC.Notifications.RequirementsMissing");
+
+  return game.i18n.format("MKSDC.Requirements.MaterialGroupMissing", {
+    materials: (failed.alternatives ?? [])
+      .map((material) => `${material.name} x${material.qty}`)
+      .join(` ${game.i18n.localize("MKSDC.App.Or")} `)
+  });
+}
+
+function applyMaterialPlanToRequirements(requirements, materialPlan) {
+  const result = foundry.utils.deepClone(requirements);
+  const selections = new Map((materialPlan.selections ?? []).map((selection) => [selection.groupIndex, selection]));
+
+  result.materialGroups = (requirements.materialGroups ?? []).map((group, groupIndex) => {
+    const selection = selections.get(groupIndex);
+    if (!selection) return group;
+
+    const alternatives = group.alternatives ?? [];
+    const selectedRow = alternatives[selection.alternativeIndex] ?? selection.material;
+    return {
+      ...group,
+      selected: {
+        ...selectedRow,
+        allocations: selection.allocations
+      },
+      ok: true
+    };
+  });
+
+  result.materialAllocation = materialPlan;
+  result.ok = Boolean(materialPlan.ok && result.toolOk && result.stationOk && result.goldOk);
+  if (result.ok) result.missing = [];
+  return result;
+}
+
+function buildOutcomeMaterialAllocations(materialPlan, outcome) {
+  const allocations = [];
+
+  for (const selection of materialPlan.selections ?? []) {
+    const qty = getConsumeQty(selection.material?.qty, outcome);
+    if (qty <= 0) continue;
+
+    const sliced = sliceMaterialAllocations(selection.allocations, qty);
+    if (!sliced.ok) {
+      return {
+        ok: false,
+        material: selection.material,
+        remaining: sliced.remaining,
+        allocations
+      };
+    }
+    allocations.push(...sliced.allocations);
+  }
+
+  return { ok: true, allocations };
+}
+
 async function showCraftingRollDialog(actor, recipe) {
   const allowedAbilities = getAllowedAbilities(recipe);
   const abilityOptions = allowedAbilities.map((ability) => {
@@ -180,7 +242,15 @@ export class CraftingEngine {
     } else {
       resourceActors = normalizeResourceActors(actor, null);
     }
-    const requirements = checkRecipeRequirements(actor, recipe, { resourceActors });
+
+    const legacyRequirements = checkRecipeRequirements(actor, recipe, { resourceActors });
+    const materialPlan = planMaterialGroups(resourceActors, recipe.materialGroups ?? []);
+    const requirements = applyMaterialPlanToRequirements(legacyRequirements, materialPlan);
+
+    if (!materialPlan.ok) {
+      requirements.ok = false;
+      requirements.missing = [getMaterialAllocationMissing(recipe, materialPlan)];
+    }
 
     if (!requirements.ok) {
       ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RequirementsMissing"));
@@ -208,59 +278,57 @@ export class CraftingEngine {
     const ability = rollConfig.ability || recipe.ability || "int";
     const rollMode = rollConfig.rollMode || "normal";
     const mod = getAbilityMod(actor, ability);
-    const roll = await new Roll(getRollFormula(rollMode), { mod }).evaluate({ async: true });
+    const roll = await new Roll(getRollFormula(rollMode), { mod }).evaluate();
     void showDiceSoNiceRoll(roll, actor);
     const d20 = getD20Result(roll);
     const outcome = getOutcome({ rollTotal: roll.total, dc: recipe.dc, d20 });
     const rollSuccess = outcome === "success" || outcome === "criticalSuccess";
 
     const consumed = [];
-    let consumptionFailed = false;
-    const consumptionFailureNotes = [];
-    for (const group of requirements.materialGroups ?? []) {
-      if (consumptionFailed) break;
-      const material = group.selected;
-      if (!material) continue;
-      const qty = getConsumeQty(material.qty, outcome);
-      if (qty <= 0) continue;
-      const result = await consumeOwnedMaterialFromActors(resourceActors, material, qty);
-      for (const entry of result.consumed ?? []) {
-        consumed.push({
-          ...entry,
-          kind: "material",
-          uuid: material.uuid || "",
-          type: material.type || "",
-          img: material.img || "icons/svg/item-bag.svg"
-        });
-      }
-      if (!result?.ok) {
-        consumptionFailed = true;
-        consumptionFailureNotes.push(game.i18n.format("MKSDC.Notes.MaterialConsumptionFailed", {
-          name: material.name,
-          remaining: result?.remaining ?? qty
-        }));
-      }
-    }
-
-    if (!consumptionFailed && setting("useGoldCost") && recipe.goldCost > 0) {
-      const goldQty = getConsumeQty(recipe.goldCost, outcome);
-      if (goldQty > 0) {
-        const result = await consumeGoldFromActors(resourceActors, goldQty);
-        for (const entry of result.consumed ?? []) {
-          consumed.push({ ...entry, kind: "gold", name: game.i18n.localize("MKSDC.Gold") });
-        }
-        if (!result?.ok) {
-          consumptionFailed = true;
-          consumptionFailureNotes.push(game.i18n.format("MKSDC.Notes.GoldConsumptionFailed", {
-            remaining: result?.remaining ?? goldQty
-          }));
-        }
-      }
-    }
-
+    const transactionFailureNotes = [];
+    let transactionFailed = false;
     let createdItem = null;
-    if (rollSuccess && !consumptionFailed) {
-      try {
+    const transaction = new ResourceTransaction(resourceActors);
+
+    try {
+      const outcomePlan = buildOutcomeMaterialAllocations(materialPlan, outcome);
+      if (!outcomePlan.ok) {
+        transactionFailed = true;
+        transactionFailureNotes.push(game.i18n.format("MKSDC.Notes.MaterialConsumptionFailed", {
+          name: outcomePlan.material?.name || "",
+          remaining: outcomePlan.remaining
+        }));
+        throw new Error("Material allocation could not be reduced to the requested outcome quantity.");
+      }
+
+      const materialResult = await transaction.consumeMaterialAllocations(outcomePlan.allocations);
+      if (!materialResult.ok) {
+        transactionFailed = true;
+        const allocation = materialResult.allocation;
+        transactionFailureNotes.push(game.i18n.format("MKSDC.Notes.MaterialConsumptionFailed", {
+          name: allocation?.material?.name || allocation?.itemName || "",
+          remaining: allocation?.qty || 0
+        }));
+        throw new Error(`Material transaction validation failed: ${materialResult.reason || "unknown"}`);
+      }
+      consumed.push(...(materialResult.consumed ?? []));
+
+      if (setting("useGoldCost") && recipe.goldCost > 0) {
+        const goldQty = getConsumeQty(recipe.goldCost, outcome);
+        if (goldQty > 0) {
+          const goldResult = await transaction.consumeGold(goldQty);
+          if (!goldResult.ok) {
+            transactionFailed = true;
+            transactionFailureNotes.push(game.i18n.format("MKSDC.Notes.GoldConsumptionFailed", {
+              remaining: goldResult.remaining ?? goldQty
+            }));
+            throw new Error(`Gold transaction validation failed: ${goldResult.reason || "unknown"}`);
+          }
+          consumed.push(...(goldResult.consumed ?? []));
+        }
+      }
+
+      if (rollSuccess) {
         createdItem = await createActorItemFromRecipe(actor, recipe, {
           recipeId: recipe.id,
           recipeBookId: recipe.bookId,
@@ -270,9 +338,28 @@ export class CraftingEngine {
           recipeSnapshot: recipe,
           quality: outcome === "criticalSuccess" ? "fine" : "standard"
         });
-      } catch (error) {
-        console.error(`${MODULE_ID} | Failed to create crafted item`, error);
+
+        if (!createdItem) {
+          transactionFailed = true;
+          throw new Error("Crafted output creation returned no item.");
+        }
+      }
+
+      transaction.commit();
+    } catch (error) {
+      transactionFailed = true;
+      console.error(`${MODULE_ID} | Crafting transaction failed`, error);
+      const rollback = await transaction.rollback();
+      consumed.length = 0;
+      createdItem = null;
+
+      if (rollSuccess) {
+        transactionFailureNotes.push(game.i18n.localize("MKSDC.Notes.OutputNotCreated"));
         ui.notifications.error(game.i18n.localize("MKSDC.Notifications.OutputCreateFailed"));
+      }
+
+      if (!rollback.ok) {
+        console.error(`${MODULE_ID} | Crafting rollback was incomplete`, rollback.errors);
       }
     }
 
@@ -280,12 +367,12 @@ export class CraftingEngine {
     const notes = [];
     if (outcome === "criticalSuccess") notes.push(game.i18n.localize("MKSDC.Notes.CriticalSuccess"));
     if (outcome === "criticalFailure") notes.push(game.i18n.localize("MKSDC.Notes.CriticalFailure"));
-    if (consumptionFailed) notes.push(...consumptionFailureNotes, game.i18n.localize("MKSDC.Notes.OutputNotCreated"));
+    if (transactionFailed) notes.push(...transactionFailureNotes);
     if (!rollSuccess && consumed.length) notes.push(game.i18n.localize("MKSDC.Notes.MaterialsLost"));
     if (!rollSuccess && !consumed.length) notes.push(game.i18n.localize("MKSDC.Notes.NoMaterialsLost"));
 
-    const finalOutcome = consumptionFailed ? "blocked" : outcome;
-    const finalOutcomeLabel = consumptionFailed ? game.i18n.localize("MKSDC.Outcome.Blocked") : getOutcomeLabel(outcome);
+    const finalOutcome = transactionFailed ? "blocked" : outcome;
+    const finalOutcomeLabel = transactionFailed ? game.i18n.localize("MKSDC.Outcome.Blocked") : getOutcomeLabel(outcome);
 
     await postCraftingChatCard(actor, {
       actor,
