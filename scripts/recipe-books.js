@@ -1,5 +1,6 @@
 import { DEFAULT_BOOK_ID, MODULE_ID, TEMPLATES } from "./constants.js";
 import { createRecipeId, getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, mutateRecipeBooks, sanitizeRecipeData, setActiveRecipeBookIds } from "./recipe-utils.js";
+import { confirmDialog, dialogFile, dialogValue, DialogV2, MKApplicationV2 } from "./application-v2.js";
 
 const BOOK_KIND = "mk-shadowdark-crafting.recipe-book";
 const BOOK_SCHEMA_VERSION = 2;
@@ -348,46 +349,51 @@ async function promptRenameSavedRecipeBook(bookId) {
   const book = books[String(bookId || "")];
   if (!book) return ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.InvalidRecipeBook"));
 
-  return new Promise((resolve) => {
-    new Dialog({
-      title: game.i18n.localize("MKSDC.RecipeBooks.RenameTitle"),
-      content: `
-        <form class="mk-sdc mk-sdc-book-dialog">
-          <div class="form-group">
-            <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.BookName"))}</label>
-            <input type="text" name="bookName" value="${escapeHtml(book.name || "")}">
-          </div>
-        </form>`,
-      buttons: {
-        rename: {
-          icon: '<i class="fas fa-i-cursor"></i>',
-          label: game.i18n.localize("MKSDC.Buttons.Rename"),
-          callback: async (html) => resolve(await renameSavedRecipeBook(bookId, html.find("[name='bookName']").val()))
-        },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: game.i18n.localize("MKSDC.Buttons.Cancel"),
-          callback: () => resolve(null)
-        }
+  return DialogV2.wait({
+    window: { title: game.i18n.localize("MKSDC.RecipeBooks.RenameTitle") },
+    content: `
+      <div class="mk-sdc mk-sdc-book-dialog">
+        <div class="form-group">
+          <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.BookName"))}</label>
+          <input type="text" name="bookName" value="${escapeHtml(book.name || "")}">
+        </div>
+      </div>`,
+    modal: true,
+    rejectClose: false,
+    buttons: [
+      {
+        action: "rename",
+        icon: "fas fa-i-cursor",
+        label: game.i18n.localize("MKSDC.Buttons.Rename"),
+        default: true,
+        callback: async (_event, button) => renameSavedRecipeBook(bookId, dialogValue(button, "bookName"))
       },
-      default: "rename",
-      close: () => resolve(null)
-    }).render(true);
+      {
+        action: "cancel",
+        icon: "fas fa-times",
+        label: game.i18n.localize("MKSDC.Buttons.Cancel"),
+        callback: () => null
+      }
+    ]
   });
 }
 
-export class RecipeBookManager extends Application {
-  static get defaultOptions() {
-    return foundry.utils.mergeObject(super.defaultOptions, {
-      id: "mk-shadowdark-recipe-book-manager",
-      classes: ["mk-sdc", "mk-sdc-book-manager"],
-      title: game.i18n.localize("MKSDC.RecipeBooks.ManagerTitle"),
-      template: TEMPLATES.RECIPE_BOOK_MANAGER,
-      width: 760,
-      height: "auto",
+export class RecipeBookManager extends MKApplicationV2 {
+  static DEFAULT_OPTIONS = {
+    id: "mk-shadowdark-recipe-book-manager",
+    classes: ["mk-sdc", "mk-sdc-book-manager"],
+    window: {
+      title: "MKSDC.RecipeBooks.ManagerTitle",
       resizable: true
-    });
-  }
+    },
+    position: {
+      width: 760
+    }
+  };
+
+  static PARTS = {
+    main: { template: TEMPLATES.RECIPE_BOOK_MANAGER }
+  };
 
   async getData() {
     const savedBooks = getSavedRecipeBooks();
@@ -437,11 +443,9 @@ export class RecipeBookManager extends Application {
 
     html.find("[data-action='migrate-legacy']").on("click", async (event) => {
       event.preventDefault();
-      const confirmed = await Dialog.confirm({
+      const confirmed = await confirmDialog({
         title: game.i18n.localize("MKSDC.RecipeBooks.MigrateTitle"),
         content: `<p>${game.i18n.localize("MKSDC.RecipeBooks.MigrateContent")}</p>`,
-        yes: () => true,
-        no: () => false,
         defaultYes: true
       });
       if (!confirmed) return;
@@ -476,11 +480,9 @@ export class RecipeBookManager extends Application {
     html.find("[data-action='update-book']").on("click", async (event) => {
       event.preventDefault();
       const book = getSavedRecipeBooks()[event.currentTarget.dataset.bookId];
-      const confirmed = await Dialog.confirm({
+      const confirmed = await confirmDialog({
         title: game.i18n.localize("MKSDC.RecipeBooks.UpdateTitle"),
         content: `<p>${game.i18n.format("MKSDC.RecipeBooks.UpdateContent", { name: escapeHtml(book?.name || "") })}</p>`,
-        yes: () => true,
-        no: () => false,
         defaultYes: false
       });
       if (!confirmed) return;
@@ -492,11 +494,9 @@ export class RecipeBookManager extends Application {
       event.preventDefault();
       const bookId = event.currentTarget.dataset.bookId;
       const book = getSavedRecipeBooks()[bookId];
-      const confirmed = await Dialog.confirm({
+      const confirmed = await confirmDialog({
         title: game.i18n.localize("MKSDC.RecipeBooks.DeleteTitle"),
         content: `<p>${game.i18n.format("MKSDC.RecipeBooks.DeleteContent", { name: escapeHtml(book?.name || "") })}</p>`,
-        yes: () => true,
-        no: () => false,
         defaultYes: false
       });
       if (!confirmed) return;
@@ -513,7 +513,7 @@ export function openManageRecipeBooks() {
   }
 
   const app = new RecipeBookManager();
-  app.render(true);
+  app.render({ force: true });
   return app;
 }
 
@@ -524,32 +524,33 @@ export async function openSaveRecipeBookDialog() {
   }
 
   const defaultName = `${game.world?.title || game.world?.id || "Shadowdark"} ${game.i18n.localize("MKSDC.RecipeBooks.DefaultName")}`;
-  return new Promise((resolve) => {
-    new Dialog({
-      title: game.i18n.localize("MKSDC.RecipeBooks.SaveTitle"),
-      content: `
-        <form class="mk-sdc mk-sdc-book-dialog">
-          <div class="form-group">
-            <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.BookName"))}</label>
-            <input type="text" name="bookName" value="${escapeHtml(defaultName)}">
-          </div>
-          <p class="hint">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.SaveHint"))}</p>
-        </form>`,
-      buttons: {
-        save: {
-          icon: '<i class="fas fa-book-bookmark"></i>',
-          label: game.i18n.localize("MKSDC.Buttons.SaveBook"),
-          callback: async (html) => resolve(await saveRecipeBook(html.find("[name='bookName']").val()))
-        },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: game.i18n.localize("MKSDC.Buttons.Cancel"),
-          callback: () => resolve(null)
-        }
+  return DialogV2.wait({
+    window: { title: game.i18n.localize("MKSDC.RecipeBooks.SaveTitle") },
+    content: `
+      <div class="mk-sdc mk-sdc-book-dialog">
+        <div class="form-group">
+          <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.BookName"))}</label>
+          <input type="text" name="bookName" value="${escapeHtml(defaultName)}">
+        </div>
+        <p class="hint">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.SaveHint"))}</p>
+      </div>`,
+    modal: true,
+    rejectClose: false,
+    buttons: [
+      {
+        action: "save",
+        icon: "fas fa-book-bookmark",
+        label: game.i18n.localize("MKSDC.Buttons.SaveBook"),
+        default: true,
+        callback: async (_event, button) => saveRecipeBook(dialogValue(button, "bookName"))
       },
-      default: "save",
-      close: () => resolve(null)
-    }).render(true);
+      {
+        action: "cancel",
+        icon: "fas fa-times",
+        label: game.i18n.localize("MKSDC.Buttons.Cancel"),
+        callback: () => null
+      }
+    ]
   });
 }
 
@@ -565,41 +566,42 @@ export async function openExportRecipeBookDialog() {
     .map(([id, book]) => `<option value="${escapeHtml(id)}">${escapeHtml(book.name || id)} (${Number(book.recipeCount || book.recipes?.length || 0)})</option>`)
     .join("");
 
-  return new Promise((resolve) => {
-    new Dialog({
-      title: game.i18n.localize("MKSDC.RecipeBooks.ExportTitle"),
-      content: `
-        <form class="mk-sdc mk-sdc-book-dialog">
-          <div class="form-group">
-            <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.BookToExport"))}</label>
-            <select name="bookId">
-              <option value="${CURRENT_ACTIVE_KEY}">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.CurrentWorldRecipes"))}</option>
-              ${savedOptions}
-            </select>
-          </div>
-          <p class="hint">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ExportHint"))}</p>
-        </form>`,
-      buttons: {
-        export: {
-          icon: '<i class="fas fa-file-export"></i>',
-          label: game.i18n.localize("MKSDC.Buttons.ExportBook"),
-          callback: async (html) => {
-            const bookId = html.find("[name='bookId']").val();
-            const book = bookId === CURRENT_ACTIVE_KEY
-              ? await buildRecipeBookData({ name: game.i18n.localize("MKSDC.RecipeBooks.CurrentWorldRecipes") })
-              : books[bookId];
-            resolve(exportRecipeBook(book));
-          }
-        },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: game.i18n.localize("MKSDC.Buttons.Cancel"),
-          callback: () => resolve(null)
+  return DialogV2.wait({
+    window: { title: game.i18n.localize("MKSDC.RecipeBooks.ExportTitle") },
+    content: `
+      <div class="mk-sdc mk-sdc-book-dialog">
+        <div class="form-group">
+          <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.BookToExport"))}</label>
+          <select name="bookId">
+            <option value="${CURRENT_ACTIVE_KEY}">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.CurrentWorldRecipes"))}</option>
+            ${savedOptions}
+          </select>
+        </div>
+        <p class="hint">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ExportHint"))}</p>
+      </div>`,
+    modal: true,
+    rejectClose: false,
+    buttons: [
+      {
+        action: "export",
+        icon: "fas fa-file-export",
+        label: game.i18n.localize("MKSDC.Buttons.ExportBook"),
+        default: true,
+        callback: async (_event, button) => {
+          const bookId = dialogValue(button, "bookId");
+          const book = bookId === CURRENT_ACTIVE_KEY
+            ? await buildRecipeBookData({ name: game.i18n.localize("MKSDC.RecipeBooks.CurrentWorldRecipes") })
+            : books[bookId];
+          return exportRecipeBook(book);
         }
       },
-      default: "export",
-      close: () => resolve(null)
-    }).render(true);
+      {
+        action: "cancel",
+        icon: "fas fa-times",
+        label: game.i18n.localize("MKSDC.Buttons.Cancel"),
+        callback: () => null
+      }
+    ]
   });
 }
 
@@ -609,56 +611,56 @@ export async function openImportRecipeBookDialog() {
     return null;
   }
 
-  return new Promise((resolve) => {
-    new Dialog({
-      title: game.i18n.localize("MKSDC.RecipeBooks.ImportTitle"),
-      content: `
-        <form class="mk-sdc mk-sdc-book-dialog">
-          <div class="form-group">
-            <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.File"))}</label>
-            <input type="file" name="file" accept="application/json,.json">
-          </div>
-          <div class="form-group">
-            <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ImportMode"))}</label>
-            <select name="mode">
-              <option value="create">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ImportModeCreate"))}</option>
-              <option value="merge">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ImportModeMerge"))}</option>
-            </select>
-          </div>
-          <p class="hint">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ImportHint"))}</p>
-        </form>`,
-      buttons: {
-        import: {
-          icon: '<i class="fas fa-file-import"></i>',
-          label: game.i18n.localize("MKSDC.Buttons.ImportBook"),
-          callback: async (html) => {
-            const file = html.find("[name='file']")[0]?.files?.[0];
-            const mode = html.find("[name='mode']").val() || "create";
-            if (!file) {
-              ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.NoImportFile"));
-              resolve(null);
-              return;
-            }
-
-            const text = await file.text();
-            try {
-              const json = JSON.parse(text);
-              resolve(await importRecipeBookData(json, { mode, activate: true }));
-            } catch (error) {
-              console.error(`${MODULE_ID} | Recipe book import failed`, error);
-              ui.notifications.error(game.i18n.localize("MKSDC.Notifications.RecipeBookImportFailed"));
-              resolve(null);
-            }
+  return DialogV2.wait({
+    window: { title: game.i18n.localize("MKSDC.RecipeBooks.ImportTitle") },
+    content: `
+      <div class="mk-sdc mk-sdc-book-dialog">
+        <div class="form-group">
+          <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.File"))}</label>
+          <input type="file" name="file" accept="application/json,.json">
+        </div>
+        <div class="form-group">
+          <label>${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ImportMode"))}</label>
+          <select name="mode">
+            <option value="create">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ImportModeCreate"))}</option>
+            <option value="merge">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ImportModeMerge"))}</option>
+          </select>
+        </div>
+        <p class="hint">${escapeHtml(game.i18n.localize("MKSDC.RecipeBooks.ImportHint"))}</p>
+      </div>`,
+    modal: true,
+    rejectClose: false,
+    buttons: [
+      {
+        action: "import",
+        icon: "fas fa-file-import",
+        label: game.i18n.localize("MKSDC.Buttons.ImportBook"),
+        default: true,
+        callback: async (_event, button) => {
+          const file = dialogFile(button, "file");
+          const mode = dialogValue(button, "mode", "create") || "create";
+          if (!file) {
+            ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.NoImportFile"));
+            return null;
           }
-        },
-        cancel: {
-          icon: '<i class="fas fa-times"></i>',
-          label: game.i18n.localize("MKSDC.Buttons.Cancel"),
-          callback: () => resolve(null)
+
+          const text = await file.text();
+          try {
+            const json = JSON.parse(text);
+            return await importRecipeBookData(json, { mode, activate: true });
+          } catch (error) {
+            console.error(`${MODULE_ID} | Recipe book import failed`, error);
+            ui.notifications.error(game.i18n.localize("MKSDC.Notifications.RecipeBookImportFailed"));
+            return null;
+          }
         }
       },
-      default: "import",
-      close: () => resolve(null)
-    }).render(true);
+      {
+        action: "cancel",
+        icon: "fas fa-times",
+        label: game.i18n.localize("MKSDC.Buttons.Cancel"),
+        callback: () => null
+      }
+    ]
   });
 }
