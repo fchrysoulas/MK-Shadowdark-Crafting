@@ -2,7 +2,6 @@ name: Crafting Integrity Tests
 
 on:
   push:
-    branches: [main]
   pull_request:
     branches: [main]
 
