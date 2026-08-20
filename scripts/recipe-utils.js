@@ -208,19 +208,37 @@ function parseMaybeJson(value) {
   }
 }
 
+function sanitizeSnapshotSystem(systemData) {
+  const system = systemData && typeof systemData === "object"
+    ? foundry.utils.deepClone(systemData)
+    : {};
+
+  const identification = system?.identification;
+  const isUnidentified = identification && identification.identified === false;
+  if (isUnidentified) {
+    // Shadowdark stores the concealed true identity here while system.description
+    // and the top-level item name contain the player-visible unidentified text.
+    // Recipe books are client-readable, so retaining these fields would reveal
+    // the secret item identity even when the recipe book itself is inactive.
+    delete identification.name;
+    delete identification.description;
+  }
+
+  return { system, isUnidentified };
+}
+
 /**
  * Keep only fields needed to recreate a normal crafted Item. Recipe books are
  * stored in client-readable world settings, so arbitrary flags, ownership,
- * folder data, and third-party metadata must not be copied into snapshots.
+ * folder data, third-party metadata, and Shadowdark unidentified-item secrets
+ * must not be copied into snapshots.
  */
 export function sanitizeOutputItemData(data, recipe = {}) {
   const parsed = parseMaybeJson(data);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
 
-  const system = parsed.system && typeof parsed.system === "object"
-    ? foundry.utils.deepClone(parsed.system)
-    : {};
-  const effects = Array.isArray(parsed.effects)
+  const { system, isUnidentified } = sanitizeSnapshotSystem(parsed.system);
+  const effects = !isUnidentified && Array.isArray(parsed.effects)
     ? foundry.utils.deepClone(parsed.effects).map((effect) => {
       const safe = effect && typeof effect === "object" ? foundry.utils.deepClone(effect) : {};
       delete safe._id;
@@ -237,6 +255,9 @@ export function sanitizeOutputItemData(data, recipe = {}) {
     system
   };
 
+  // Active Effects can disclose the mechanics of an unidentified magic item.
+  // They are omitted alongside the concealed identified name/description. A
+  // recipe that must preserve hidden reveal data requires future GM-only storage.
   if (effects.length) itemData.effects = effects;
   return itemData;
 }
