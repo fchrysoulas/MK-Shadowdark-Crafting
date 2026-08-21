@@ -111,6 +111,15 @@ export function registerSettings() {
     default: ["world-recipes"]
   });
 
+  game.settings.register(MODULE_ID, "operationLockState", {
+    name: "Crafting Economy Lock State",
+    hint: "Internal failover state for serialized crafting and deconstruction operations.",
+    scope: "world",
+    config: false,
+    type: Object,
+    default: {}
+  });
+
   game.settings.register(MODULE_ID, "layoutMode", {
     name: game.i18n.localize("MKSDC.Settings.LayoutMode.Name"),
     hint: game.i18n.localize("MKSDC.Settings.LayoutMode.Hint"),
