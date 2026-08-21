@@ -297,6 +297,16 @@ export class CraftingEngine {
         return null;
       }
 
+      // Tools and stations are requirements rather than consumed resources, so
+      // ResourceTransaction cannot validate them. Re-check those live actor
+      // documents after acquiring the same economy lock and before any mutation.
+      const lockedRequirements = checkRecipeRequirements(actor, lockedRecipe, { resourceActors });
+      if (!lockedRequirements.toolOk || !lockedRequirements.stationOk) {
+        ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RequirementsMissing"));
+        await transaction.rollback();
+        return null;
+      }
+
       const outcomePlan = buildOutcomeMaterialAllocations(materialPlan, outcome);
       if (!outcomePlan.ok) {
         transactionFailed = true;
