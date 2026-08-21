@@ -35,7 +35,8 @@ function clampLeaseMs(value) {
 }
 
 function nowMs() {
-  return Date.now();
+  const serverTime = Number(globalThis.game?.time?.serverTime);
+  return Number.isFinite(serverTime) && serverTime > 0 ? serverTime : Date.now();
 }
 
 function rotateRight(value, shift) {
