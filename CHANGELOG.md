@@ -4,6 +4,8 @@ All notable changes to MK Shadowdark Crafting are documented here.
 
 ## Unreleased
 
+- Fixed crafting chat cards so consumed gold displays its exact quantity, using the same consumed-entry field as materials.
+
 ## 0.4.4
 
 - Reject Recipe Book imports with malformed, non-integer, non-finite, unsafe, or out-of-range crafting quantities/costs before any world mutation; valid integer numeric strings remain supported.

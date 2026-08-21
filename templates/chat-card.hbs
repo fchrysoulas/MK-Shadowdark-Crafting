@@ -43,7 +43,7 @@
       <strong>{{localize "MKSDC.Chat.Consumed"}}</strong>
       <ul>
         {{#each consumed as |entry|}}
-          <li>{{entry.name}} x{{#if (mkSdcEq entry.kind "gold")}}{{entry.amount}}{{else}}{{entry.qty}}{{/if}}{{#if entry.actorName}} <small>{{localize "MKSDC.Chat.From"}} {{entry.actorName}}</small>{{/if}}</li>
+          <li>{{entry.name}} x{{entry.qty}}{{#if entry.actorName}} <small>{{localize "MKSDC.Chat.From"}} {{entry.actorName}}</small>{{/if}}</li>
         {{/each}}
       </ul>
     </div>

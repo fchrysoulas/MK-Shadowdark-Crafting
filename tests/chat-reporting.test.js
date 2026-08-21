@@ -41,6 +41,14 @@ test("successful post-commit chat returns a successful report", async () => {
   assert.equal(result.error, null);
 });
 
+test("consumed material and gold rows render the shared qty field", async () => {
+  const template = await readFile(path.join(process.cwd(), "templates/chat-card.hbs"), "utf8");
+  const consumedBlock = template.match(/\{\{#if consumed\.length\}\}([\s\S]*?)\{\{\/if\}\}/)?.[1] ?? "";
+
+  assert.match(consumedBlock, /\{\{entry\.qty\}\}/);
+  assert.doesNotMatch(consumedBlock, /entry\.amount/);
+});
+
 test("craft result chat is posted safely after transaction commit and returned to caller", async () => {
   const source = await readFile(path.join(process.cwd(), "scripts/crafting-engine.js"), "utf8");
   const commitIndex = source.indexOf("transaction.commit()");
