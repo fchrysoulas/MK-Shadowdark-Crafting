@@ -21,6 +21,15 @@
     <input type="hidden" name="recipe.outputImg" value="{{recipe.outputImg}}">
     <textarea name="recipe.outputItemData" class="mk-sdc-hidden-json">{{mkSdcJson recipe.outputItemData}}</textarea>
 
+    <div class="form-group">
+      <label>{{localize "MKSDC.Editor.OutputSourceMode"}}</label>
+      <select name="recipe.outputSourceMode">
+        <option value="snapshot" {{#if (mkSdcEq recipe.outputSourceMode "snapshot")}}selected{{/if}}>{{localize "MKSDC.Editor.OutputSourceSnapshot"}}</option>
+        <option value="linked" {{#if (mkSdcEq recipe.outputSourceMode "linked")}}selected{{/if}}>{{localize "MKSDC.Editor.OutputSourceLinked"}}</option>
+      </select>
+      <p class="hint">{{localize "MKSDC.Editor.OutputSourceModeHint"}}</p>
+    </div>
+
     <div class="mk-sdc-three-col">
       <div class="form-group">
         <label>{{localize "MKSDC.Editor.Name"}}</label>
