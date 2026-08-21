@@ -1,6 +1,7 @@
 import { MODULE_ID, TEMPLATES, ABILITIES } from "./constants.js";
 import { deleteRecipe, getEditableRecipeBookId, getRecipeBooks, getRecipeData, normalizeRecipeAbilities, sanitizeMaterialChoice, sanitizeOutputItemData, sanitizeRecipeData, upsertRecipe } from "./recipe-utils.js";
 import { getAvailableItemTypes, getItemQuantity, resolveItemType } from "./item-utils.js";
+import { getMaterialIdentityFromItem } from "./material-identity.js";
 import { confirmDialog, MKFormApplicationV2 } from "./application-v2.js";
 
 function toArrayFromExpanded(value) {
@@ -20,6 +21,13 @@ function itemToRecipePart(item, uuid = "") {
     img: item?.img || "icons/svg/item-bag.svg",
     qty: Math.max(1, Number(item?.qty ?? (item ? getItemQuantity(item) : 1) ?? 1)),
     outputItemData: data
+  };
+}
+
+function itemToMaterialPart(item, uuid = "") {
+  return {
+    ...getMaterialIdentityFromItem(item, uuid),
+    qty: 1
   };
 }
 
@@ -359,10 +367,10 @@ export class RecipeEditor extends MKFormApplicationV2 {
       this._setOutputFields(root, itemToRecipePart(dropped.item, dropped.uuid));
     });
     bindDrop("[data-drop-target='materials']", async (dropped) => {
-      this._appendMaterialGroup(root, { alternatives: [{ ...itemToRecipePart(dropped.item, dropped.uuid), qty: 1 }] });
+      this._appendMaterialGroup(root, { alternatives: [itemToMaterialPart(dropped.item, dropped.uuid)] });
     });
     bindDrop("[data-drop-target='deconstruct-materials']", async (dropped) => {
-      this._appendDeconstructMaterial(root, { ...itemToRecipePart(dropped.item, dropped.uuid), qty: 1 });
+      this._appendDeconstructMaterial(root, itemToMaterialPart(dropped.item, dropped.uuid));
     });
 
     root.addEventListener("dragover", (event) => {
@@ -382,7 +390,7 @@ export class RecipeEditor extends MKFormApplicationV2 {
       const dropped = await getDroppedItem(event);
       if (!dropped) return;
       const group = target.closest("[data-material-group]");
-      if (group) this._appendMaterialChoice(group, { ...itemToRecipePart(dropped.item, dropped.uuid), qty: 1 });
+      if (group) this._appendMaterialChoice(group, itemToMaterialPart(dropped.item, dropped.uuid));
     });
   }
 

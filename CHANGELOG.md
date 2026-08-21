@@ -10,6 +10,7 @@ All notable changes to MK Shadowdark Crafting are documented here.
 - Changed Recipe Editor ability choices to a borderless three-column by two-row layout.
 - Simplified the Crafting header to show `Character Name - Crafting` beside the portrait.
 - Made the character header reflect the active mode and removed the redundant Deconstruct Inventory title and hint.
+- Restricted crafting execution to enabled recipes in active books; crafting now aborts if execution-critical recipe data changes before inventory mutation.
 
 ## 0.4.3
 

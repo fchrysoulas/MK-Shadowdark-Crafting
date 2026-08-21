@@ -82,6 +82,7 @@ const {
 } = await import("../scripts/recipe-utils.js");
 const { getAvailableItemTypes } = await import("../scripts/item-utils.js");
 const { getCraftableRecipeById, getRecipeExecutionSignature } = await import("../scripts/craftable-recipe.js");
+const { sanitizeStoredOutputSnapshots } = await import("../scripts/output-snapshot-migration.js");
 
 test("same-client concurrent recipe book mutations are serialized without lost updates", { concurrency: false }, async () => {
   store.recipeBooks = {};
@@ -292,4 +293,74 @@ test("output snapshots retain item mechanics but strip unrelated metadata and fl
   assert.equal(snapshot.effects[0].origin, undefined);
   assert.equal(snapshot.effects[0].flags, undefined);
   assert.deepEqual(snapshot.effects[0].changes, [{ key: "system.test", mode: 2, value: "1" }]);
+});
+
+test("unidentified Shadowdark snapshots do not reveal concealed identity or effects", { concurrency: false }, () => {
+  const snapshot = sanitizeOutputItemData({
+    name: "Mysterious Sword",
+    type: "Weapon",
+    img: "icons/mystery.webp",
+    system: {
+      quantity: 1,
+      description: "A dull black sword with no visible markings.",
+      identification: {
+        identified: false,
+        name: "Blade of the Secret King",
+        description: "The hidden true powers and curse."
+      }
+    },
+    effects: [
+      {
+        name: "Hidden Fire Power",
+        changes: [{ key: "system.damage", mode: 2, value: "1d6" }]
+      }
+    ]
+  }, { outputName: "Fallback", outputType: "Weapon" });
+
+  assert.equal(snapshot.name, "Mysterious Sword");
+  assert.equal(snapshot.system.description, "A dull black sword with no visible markings.");
+  assert.equal(snapshot.system.identification.identified, false);
+  assert.equal(snapshot.system.identification.name, undefined);
+  assert.equal(snapshot.system.identification.description, undefined);
+  assert.equal(snapshot.effects, undefined);
+  assert.doesNotMatch(JSON.stringify(snapshot), /Secret King|hidden true powers|Hidden Fire Power/);
+});
+
+test("stored unidentified snapshots are sanitized out of the world setting", { concurrency: false }, async () => {
+  store.recipeBooks = {
+    alpha: {
+      id: "alpha",
+      active: false,
+      recipes: [{
+        id: "secret-recipe",
+        bookId: "alpha",
+        outputName: "Mysterious Sword",
+        outputType: "Weapon",
+        outputItemData: {
+          name: "Mysterious Sword",
+          type: "Weapon",
+          system: {
+            description: "Visible text",
+            identification: {
+              identified: false,
+              name: "Secret True Name",
+              description: "Secret true description"
+            }
+          },
+          effects: [{ name: "Secret Effect", changes: [] }]
+        }
+      }]
+    }
+  };
+
+  const result = await sanitizeStoredOutputSnapshots();
+  const stored = store.recipeBooks.alpha.recipes[0].outputItemData;
+
+  assert.equal(result.changed, true);
+  assert.equal(result.sanitizedCount, 1);
+  assert.equal(stored.system.identification.identified, false);
+  assert.equal(stored.system.identification.name, undefined);
+  assert.equal(stored.system.identification.description, undefined);
+  assert.equal(stored.effects, undefined);
+  assert.doesNotMatch(JSON.stringify(store.recipeBooks), /Secret True Name|Secret true description|Secret Effect/);
 });

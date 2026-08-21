@@ -287,6 +287,16 @@ export class CraftingEngine {
     const transaction = new ResourceTransaction(resourceActors);
 
     try {
+      // Acquire the shared economy lock before the final recipe lookup. This
+      // closes the modal/roll-to-mutation window without consuming anything.
+      await transaction.begin();
+      const lockedRecipe = await getCraftableRecipeById(recipe.id, { bookId: recipe.bookId });
+      if (!lockedRecipe || getRecipeExecutionSignature(lockedRecipe) !== initialExecutionSignature) {
+        ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
+        await transaction.rollback();
+        return null;
+      }
+
       const outcomePlan = buildOutcomeMaterialAllocations(materialPlan, outcome);
       if (!outcomePlan.ok) {
         transactionFailed = true;

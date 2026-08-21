@@ -208,19 +208,37 @@ function parseMaybeJson(value) {
   }
 }
 
+function sanitizeSnapshotSystem(systemData) {
+  const system = systemData && typeof systemData === "object"
+    ? foundry.utils.deepClone(systemData)
+    : {};
+
+  const identification = system?.identification;
+  const isUnidentified = identification && identification.identified === false;
+  if (isUnidentified) {
+    // Shadowdark stores the concealed true identity here while system.description
+    // and the top-level item name contain the player-visible unidentified text.
+    // Recipe books are client-readable, so retaining these fields would reveal
+    // the secret item identity even when the recipe book itself is inactive.
+    delete identification.name;
+    delete identification.description;
+  }
+
+  return { system, isUnidentified };
+}
+
 /**
  * Keep only fields needed to recreate a normal crafted Item. Recipe books are
  * stored in client-readable world settings, so arbitrary flags, ownership,
- * folder data, and third-party metadata must not be copied into snapshots.
+ * folder data, third-party metadata, and Shadowdark unidentified-item secrets
+ * must not be copied into snapshots.
  */
 export function sanitizeOutputItemData(data, recipe = {}) {
   const parsed = parseMaybeJson(data);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
 
-  const system = parsed.system && typeof parsed.system === "object"
-    ? foundry.utils.deepClone(parsed.system)
-    : {};
-  const effects = Array.isArray(parsed.effects)
+  const { system, isUnidentified } = sanitizeSnapshotSystem(parsed.system);
+  const effects = !isUnidentified && Array.isArray(parsed.effects)
     ? foundry.utils.deepClone(parsed.effects).map((effect) => {
       const safe = effect && typeof effect === "object" ? foundry.utils.deepClone(effect) : {};
       delete safe._id;
@@ -237,6 +255,9 @@ export function sanitizeOutputItemData(data, recipe = {}) {
     system
   };
 
+  // Active Effects can disclose the mechanics of an unidentified magic item.
+  // They are omitted alongside the concealed identified name/description. A
+  // recipe that must preserve hidden reveal data requires future GM-only storage.
   if (effects.length) itemData.effects = effects;
   return itemData;
 }
@@ -302,13 +323,17 @@ export async function setRecipeBooks(books) {
 
 export function getActiveRecipeBookIds() {
   const books = getRecipeBooks();
-  const activeFromBooks = Object.entries(books)
-    .filter(([, book]) => Boolean(book?.active))
-    .map(([id]) => id);
+  const entries = Object.entries(books);
+  const hasExplicitActiveState = entries.some(([, book]) => Object.hasOwn(book || {}, "active"));
 
-  // Book.active is authoritative. The separate setting is legacy compatibility
-  // only and is read as a fallback for worlds created before book.active existed.
-  if (activeFromBooks.length) return activeFromBooks;
+  // Explicit modern active flags are authoritative even when the resulting set
+  // is empty. Only genuinely legacy books with no active property use the old
+  // activeRecipeBookIds setting as migration input.
+  if (hasExplicitActiveState) {
+    return entries
+      .filter(([, book]) => book?.active === true)
+      .map(([id]) => id);
+  }
 
   try {
     const legacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
@@ -325,7 +350,7 @@ export async function setActiveRecipeBookIds(ids = []) {
   await mutateRecipeBooks((books) => {
     for (const [id, book] of Object.entries(books)) {
       const next = selected.has(id);
-      if (Boolean(book.active) === next) continue;
+      if (Object.hasOwn(book || {}, "active") && Boolean(book.active) === next) continue;
       book.active = next;
       book.updatedAt = nowIso();
     }
@@ -349,12 +374,24 @@ export async function setActiveRecipeBookIds(ids = []) {
 export async function ensureDefaultRecipeBook() {
   if (!game.user?.isGM) return getRecipeBooks()[DEFAULT_BOOK_ID] ?? null;
 
+  let legacyIds = [];
+  try {
+    legacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
+  } catch (_error) {
+    legacyIds = [];
+  }
+  const legacySet = new Set(legacyIds.map((id) => String(id || "").trim()).filter(Boolean));
+
   await mutateRecipeBooks((books) => {
+    const entriesBefore = Object.entries(books);
+    const wasUninitialized = entriesBefore.length === 0;
+    const hadExplicitActiveState = entriesBefore.some(([, book]) => Object.hasOwn(book || {}, "active"));
+
     if (!books[DEFAULT_BOOK_ID]) {
       books[DEFAULT_BOOK_ID] = {
         id: DEFAULT_BOOK_ID,
         name: game.i18n.localize("MKSDC.RecipeBooks.WorldRecipesName") || "World Recipes",
-        active: true,
+        active: wasUninitialized,
         recipes: [],
         recipeCount: 0,
         createdAt: nowIso(),
@@ -363,17 +400,29 @@ export async function ensureDefaultRecipeBook() {
       };
     }
 
-    const hasActive = Object.values(books).some((book) => Boolean(book?.active));
-    if (!hasActive && books[DEFAULT_BOOK_ID]) {
-      books[DEFAULT_BOOK_ID].active = true;
-      books[DEFAULT_BOOK_ID].updatedAt = nowIso();
+    // Migrate only books which actually predate book.active. Existing explicit
+    // false values are never overridden by the legacy compatibility mirror.
+    for (const [id, book] of Object.entries(books)) {
+      if (Object.hasOwn(book || {}, "active")) continue;
+      book.active = legacySet.has(id);
+      book.updatedAt = nowIso();
+    }
+
+    // If this was a legacy state with no active marker at all, establish one
+    // sensible default during migration. Modern all-inactive worlds skip this.
+    if (!hadExplicitActiveState && !wasUninitialized) {
+      const hasActive = Object.values(books).some((book) => book?.active === true);
+      if (!hasActive && legacySet.size === 0 && books[DEFAULT_BOOK_ID]) {
+        books[DEFAULT_BOOK_ID].active = true;
+        books[DEFAULT_BOOK_ID].updatedAt = nowIso();
+      }
     }
   });
 
   const activeIds = getActiveRecipeBookIds();
   try {
-    const legacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
-    if (JSON.stringify(legacyIds) !== JSON.stringify(activeIds)) {
+    const currentLegacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
+    if (JSON.stringify(currentLegacyIds) !== JSON.stringify(activeIds)) {
       await game.settings.set(MODULE_ID, "activeRecipeBookIds", activeIds);
     }
   } catch (error) {

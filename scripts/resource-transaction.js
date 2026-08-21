@@ -5,6 +5,7 @@ import {
   getItemQuantityPath,
   normalizeResourceActors
 } from "./item-utils.js";
+import { acquireOperationLock } from "./operation-lock.js";
 
 function getOwnedItem(actor, itemId) {
   if (!actor || !itemId) return null;
@@ -34,11 +35,36 @@ export class ResourceTransaction {
     this.actorMap = new Map(this.resourceActors.map((actor) => [getActorResourceId(actor), actor]));
     this.itemSnapshots = new Map();
     this.goldSnapshots = new Map();
+    this.operationLock = null;
     this.closed = false;
+  }
+
+  async begin() {
+    await this._ensureOperationLock();
+    return this;
   }
 
   _getActor(actorId) {
     return this.actorMap.get(String(actorId || "")) ?? null;
+  }
+
+  async _ensureOperationLock() {
+    if (this.closed) throw new Error("Resource transaction is already closed.");
+    if (!this.operationLock) this.operationLock = await acquireOperationLock();
+    return this.operationLock;
+  }
+
+  async _releaseOperationLock() {
+    const lock = this.operationLock;
+    this.operationLock = null;
+    if (!lock?.release) return false;
+    try {
+      await lock.release();
+      return true;
+    } catch (error) {
+      console.error("mk-shadowdark-crafting | Failed to release economy operation lock", error);
+      return false;
+    }
   }
 
   _snapshotItem(actor, item) {
@@ -102,9 +128,13 @@ export class ResourceTransaction {
 
   async consumeMaterialAllocations(allocations = []) {
     if (this.closed) throw new Error("Resource transaction is already closed.");
+    await this._ensureOperationLock();
 
     const validation = this.validateMaterialAllocations(allocations);
-    if (!validation.ok) return validation;
+    if (!validation.ok) {
+      await this._releaseOperationLock();
+      return validation;
+    }
 
     const consumed = [];
     for (const entry of validation.resolved) {
@@ -164,8 +194,13 @@ export class ResourceTransaction {
 
   async consumeGold(amount = 0) {
     if (this.closed) throw new Error("Resource transaction is already closed.");
+    await this._ensureOperationLock();
+
     const plan = this._planGold(amount);
-    if (!plan.ok) return { ...plan, reason: "insufficientGold" };
+    if (!plan.ok) {
+      await this._releaseOperationLock();
+      return { ...plan, reason: "insufficientGold" };
+    }
 
     const consumed = [];
     for (const allocation of plan.allocations) {
@@ -191,6 +226,7 @@ export class ResourceTransaction {
     this.itemSnapshots.clear();
     this.goldSnapshots.clear();
     this.closed = true;
+    void this._releaseOperationLock();
   }
 
   async rollback() {
@@ -225,6 +261,7 @@ export class ResourceTransaction {
     this.itemSnapshots.clear();
     this.goldSnapshots.clear();
     this.closed = true;
+    await this._releaseOperationLock();
     return { ok: errors.length === 0, errors };
   }
 }

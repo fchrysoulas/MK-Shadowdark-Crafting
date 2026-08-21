@@ -5,15 +5,24 @@ function getProperty(object, path) {
   return String(path || "").split(".").reduce((value, key) => value?.[key], object);
 }
 
+const currentUser = { id: "gm-1", isGM: true, active: true };
 globalThis.game = {
-  user: { isGM: true },
+  user: currentUser,
+  users: [currentUser],
+  socket: {
+    on() {},
+    emit() {}
+  },
   i18n: {
     localize: (key) => key
   }
 };
 
 globalThis.foundry = {
-  utils: { getProperty }
+  utils: {
+    getProperty,
+    randomID: () => Math.random().toString(36).slice(2, 14)
+  }
 };
 
 function makeItem(id, qty, { failOnce = false } = {}) {
@@ -77,6 +86,26 @@ function makeActor(items) {
 
 const { ResourceTransaction } = await import("../scripts/resource-transaction.js");
 
+test("a transaction can reserve the operation lock before mutation", async () => {
+  const actor = makeActor([]);
+  const first = new ResourceTransaction([actor]);
+  const second = new ResourceTransaction([actor]);
+
+  await first.begin();
+  let secondStarted = false;
+  const secondPromise = second.begin().then(() => {
+    secondStarted = true;
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(secondStarted, false);
+
+  await first.rollback();
+  await secondPromise;
+  assert.equal(secondStarted, true);
+  await second.rollback();
+});
+
 test("partial material mutation failure rolls earlier changes back", async () => {
   const first = makeItem("first", 5);
   const second = makeItem("second", 5, { failOnce: true });
@@ -94,4 +123,60 @@ test("partial material mutation failure rolls earlier changes back", async () =>
   assert.equal(rollback.ok, true);
   assert.equal(first.system.quantity, 5);
   assert.equal(second.system.quantity, 5);
+});
+
+test("concurrent transactions cannot both spend the same material quantity", async () => {
+  const iron = makeItem("iron", 5);
+  const actor = makeActor([iron]);
+  const allocation = [{ actorId: actor.uuid, itemId: iron.id, qty: 3, material: { name: "Iron" } }];
+  const first = new ResourceTransaction([actor]);
+  const second = new ResourceTransaction([actor]);
+
+  const firstResult = await first.consumeMaterialAllocations(allocation);
+  assert.equal(firstResult.ok, true);
+  assert.equal(iron.system.quantity, 2);
+
+  let secondFinished = false;
+  const secondPromise = second.consumeMaterialAllocations(allocation).then((result) => {
+    secondFinished = true;
+    return result;
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(secondFinished, false, "second transaction should wait for the first lock holder");
+
+  first.commit();
+  const secondResult = await secondPromise;
+
+  assert.equal(secondResult.ok, false);
+  assert.equal(secondResult.reason, "insufficientMaterial");
+  assert.equal(iron.system.quantity, 2);
+  await second.rollback();
+});
+
+test("concurrent transactions cannot lose gold deductions through stale writes", async () => {
+  const actor = makeActor([]);
+  const first = new ResourceTransaction([actor]);
+  const second = new ResourceTransaction([actor]);
+
+  const firstResult = await first.consumeGold(7);
+  assert.equal(firstResult.ok, true);
+  assert.equal(actor.system.coins.gp, 3);
+
+  let secondFinished = false;
+  const secondPromise = second.consumeGold(7).then((result) => {
+    secondFinished = true;
+    return result;
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(secondFinished, false, "second gold transaction should wait for the first lock holder");
+
+  first.commit();
+  const secondResult = await secondPromise;
+
+  assert.equal(secondResult.ok, false);
+  assert.equal(secondResult.reason, "insufficientGold");
+  assert.equal(actor.system.coins.gp, 3);
+  await second.rollback();
 });

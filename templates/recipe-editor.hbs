@@ -168,37 +168,66 @@
 
     <div class="form-group stacked mk-sdc-deconstruct-editor-section">
       <label><i class="fas fa-recycle"></i> {{localize "MKSDC.Editor.DeconstructMaterials"}}</label>
-      <div class="mk-sdc-drop-zone mk-sdc-material-drop" data-drop-target="deconstruct-materials">
-        <i class="fas fa-recycle"></i>
-        <span>{{localize "MKSDC.Editor.DeconstructDropHint"}}</span>
-        <button type="button" data-action="add-deconstruct-material"><i class="fas fa-plus"></i> {{localize "MKSDC.Buttons.AddMaterial"}}</button>
-      </div>
 
-      <ul class="mk-sdc-material-editor-list" data-deconstruct-material-list>
-        {{#each recipe.deconstructMaterials as |material materialIndex|}}
-          <li class="mk-sdc-material-choice mk-sdc-deconstruct-material-row" data-deconstruct-material-row data-deconstruct-material-index="{{materialIndex}}">
-            <img src="{{material.img}}" alt="{{material.name}}">
-            <div class="mk-sdc-material-main">
-              <input type="text" name="deconstructMaterials.{{materialIndex}}.name" value="{{material.name}}" placeholder="{{localize 'MKSDC.Editor.MaterialName'}}">
-              <input type="hidden" name="deconstructMaterials.{{materialIndex}}.uuid" value="{{material.uuid}}">
-              <input type="hidden" name="deconstructMaterials.{{materialIndex}}.type" value="{{material.type}}">
-              <input type="hidden" name="deconstructMaterials.{{materialIndex}}.img" value="{{material.img}}">
-              <div class="mk-sdc-material-meta">
-                {{#if material.type}}{{material.type}}{{else}}{{localize "MKSDC.Editor.ManualMaterial"}}{{/if}}
+      {{#if recipe.deconstructGenerated}}
+        <div data-generated-deconstruction-preview>
+          <ul class="mk-sdc-material-editor-list">
+            {{#each recipe.deconstructMaterials as |material|}}
+              <li class="mk-sdc-material-choice mk-sdc-deconstruct-material-row" data-generated-refund-row>
+                <img src="{{material.img}}" alt="{{material.name}}">
+                <div class="mk-sdc-material-main">
+                  <strong>{{material.name}}</strong>
+                  <div class="mk-sdc-material-meta">
+                    {{#if material.type}}{{material.type}}{{else}}{{localize "MKSDC.Editor.ManualMaterial"}}{{/if}}
+                  </div>
+                </div>
+                <div class="mk-sdc-material-qty">
+                  <label>{{localize "MKSDC.Editor.Quantity"}}</label>
+                  <strong>{{material.qty}}</strong>
+                </div>
+              </li>
+            {{/each}}
+          </ul>
+        </div>
+
+        <div class="mk-sdc-drop-zone mk-sdc-material-drop" data-drop-target="deconstruct-materials">
+          <i class="fas fa-recycle"></i>
+          <span>{{localize "MKSDC.Editor.DeconstructDropHint"}}</span>
+          <button type="button" data-action="add-deconstruct-material"><i class="fas fa-plus"></i> {{localize "MKSDC.Buttons.AddMaterial"}}</button>
+        </div>
+        <ul class="mk-sdc-material-editor-list" data-deconstruct-material-list></ul>
+        <p class="hint" data-deconstruct-material-empty>{{localize "MKSDC.Editor.NoDeconstructMaterials"}}</p>
+      {{else}}
+        <div class="mk-sdc-drop-zone mk-sdc-material-drop" data-drop-target="deconstruct-materials">
+          <i class="fas fa-recycle"></i>
+          <span>{{localize "MKSDC.Editor.DeconstructDropHint"}}</span>
+          <button type="button" data-action="add-deconstruct-material"><i class="fas fa-plus"></i> {{localize "MKSDC.Buttons.AddMaterial"}}</button>
+        </div>
+
+        <ul class="mk-sdc-material-editor-list" data-deconstruct-material-list>
+          {{#each recipe.deconstructMaterials as |material materialIndex|}}
+            <li class="mk-sdc-material-choice mk-sdc-deconstruct-material-row" data-deconstruct-material-row data-deconstruct-material-index="{{materialIndex}}">
+              <img src="{{material.img}}" alt="{{material.name}}">
+              <div class="mk-sdc-material-main">
+                <input type="text" name="deconstructMaterials.{{materialIndex}}.name" value="{{material.name}}" placeholder="{{localize 'MKSDC.Editor.MaterialName'}}">
+                <input type="hidden" name="deconstructMaterials.{{materialIndex}}.uuid" value="{{material.uuid}}">
+                <input type="hidden" name="deconstructMaterials.{{materialIndex}}.type" value="{{material.type}}">
+                <input type="hidden" name="deconstructMaterials.{{materialIndex}}.img" value="{{material.img}}">
+                <div class="mk-sdc-material-meta">
+                  {{#if material.type}}{{material.type}}{{else}}{{localize "MKSDC.Editor.ManualMaterial"}}{{/if}}
+                </div>
               </div>
-            </div>
-            <div class="mk-sdc-material-qty">
-              <label>{{localize "MKSDC.Editor.Quantity"}}</label>
-              <input type="number" name="deconstructMaterials.{{materialIndex}}.qty" value="{{material.qty}}" min="1" step="1">
-            </div>
-            <button type="button" class="mk-sdc-icon-button" data-action="remove-deconstruct-material" title="{{localize 'MKSDC.Buttons.Remove'}}">
-              <i class="fas fa-trash"></i>
-            </button>
-          </li>
-        {{/each}}
-      </ul>
+              <div class="mk-sdc-material-qty">
+                <label>{{localize "MKSDC.Editor.Quantity"}}</label>
+                <input type="number" name="deconstructMaterials.{{materialIndex}}.qty" value="{{material.qty}}" min="1" step="1">
+              </div>
+              <button type="button" class="mk-sdc-icon-button" data-action="remove-deconstruct-material" title="{{localize 'MKSDC.Buttons.Remove'}}"><i class="fas fa-trash"></i></button>
+            </li>
+          {{/each}}
+        </ul>
 
-      <p class="hint" data-deconstruct-material-empty {{#if hasDeconstructMaterials}}style="display:none;"{{/if}}>{{localize "MKSDC.Editor.NoDeconstructMaterials"}}</p>
+        <p class="hint" data-deconstruct-material-empty {{#if hasDeconstructMaterials}}style="display:none;"{{/if}}>{{localize "MKSDC.Editor.NoDeconstructMaterials"}}</p>
+      {{/if}}
       <p class="hint">{{localize "MKSDC.Editor.DeconstructMaterialsHint"}}</p>
     </div>
 

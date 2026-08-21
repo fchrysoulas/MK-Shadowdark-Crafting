@@ -2,17 +2,16 @@ import { FLAGS, MODULE_ID } from "./constants.js";
 import { setting } from "./settings.js";
 import { postCraftingChatCard } from "./chat.js";
 import {
-  addOwnedItemQuantity,
   consumeOwnedItemDocument,
-  findOwnedItemByName,
-  findOwnedItemForMaterial,
   getItemQuantity,
   getItemQuantityPath,
   normalizeName
 } from "./item-utils.js";
+import { addOwnedMaterialQuantity, getMatchingOwnedMaterialItems } from "./material-identity.js";
 import { getRecipeDeconstructMaterials, getRecipeEntriesForActor, hasRecipeDeconstruction, isRecipeItem, sanitizeRecipeData } from "./recipe-utils.js";
 import { aggregateRefundMaterials, normalizeRecoverableState, takeOneRefund } from "./deconstruction-refund.js";
 import { confirmDialog } from "./application-v2.js";
+import { acquireOperationLock } from "./operation-lock.js";
 
 function getCraftedFlag(item) {
   return item?.getFlag?.(MODULE_ID, FLAGS.CRAFTED) ?? null;
@@ -392,12 +391,9 @@ export async function deconstructItem(actor, item, options = {}) {
     return null;
   }
 
-  // Compute once so confirmation, execution, and persisted batch state all use
-  // the same finite refund allocation.
-  const refundPlan = getRefundPlan(item, recipe);
-  const refundMaterials = refundPlan.refundMaterials;
+  const previewPlan = getRefundPlan(item, recipe);
   if (!options.skipConfirm) {
-    const confirmed = await confirmDeconstruction(item, recipe, refundMaterials);
+    const confirmed = await confirmDeconstruction(item, recipe, previewPlan.refundMaterials);
     if (!confirmed) return null;
   }
 
@@ -406,22 +402,36 @@ export async function deconstructItem(actor, item, options = {}) {
     img: item.img,
     qty: 1
   };
-  const sourceSnapshot = snapshotItem(item);
   const refundOperations = [];
   const recovered = [];
+  let operationLock = null;
+  let sourceSnapshot = null;
+  let lockedItem = null;
 
   try {
-    const consumeResult = await consumeOwnedItemDocument(item, 1);
+    operationLock = await acquireOperationLock();
+    lockedItem = findActorItem(actor, item.id);
+    if (!lockedItem || getItemQuantity(lockedItem) <= 0) {
+      throw new Error("The deconstruction source item changed before the operation lock was acquired.");
+    }
+
+    // Recompute under the shared economy lock so another client cannot consume
+    // the same source quantity or finite recovery pool between preview and mutation.
+    const refundPlan = getRefundPlan(lockedItem, recipe);
+    const refundMaterials = refundPlan.refundMaterials;
+    sourceSnapshot = snapshotItem(lockedItem);
+
+    const consumeResult = await consumeOwnedItemDocument(lockedItem, 1);
     if (!consumeResult?.ok) {
       throw new Error(`Could not remove deconstructed item: ${consumeResult?.reason || "unknown"}`);
     }
 
-    await persistGeneratedRefundState(item, recipe, refundPlan);
+    await persistGeneratedRefundState(lockedItem, recipe, refundPlan);
 
     for (const material of refundMaterials) {
-      const existing = findOwnedItemForMaterial(actor, material) || findOwnedItemByName(actor, material.name);
+      const existing = getMatchingOwnedMaterialItems(actor, material)[0] ?? null;
       const existingSnapshot = snapshotItem(existing);
-      const recoveredItem = await addOwnedItemQuantity(actor, material, material.qty);
+      const recoveredItem = await addOwnedMaterialQuantity(actor, material, material.qty);
 
       refundOperations.push({
         snapshot: existingSnapshot,
@@ -438,18 +448,28 @@ export async function deconstructItem(actor, item, options = {}) {
     }
   } catch (error) {
     console.error(`${MODULE_ID} | Deconstruction transaction failed`, error);
-    const rollback = await rollbackDeconstruction(actor, sourceSnapshot, refundOperations);
-    if (!rollback.ok) {
-      console.error(`${MODULE_ID} | Deconstruction rollback was incomplete`, rollback.errors);
+    if (sourceSnapshot) {
+      const rollback = await rollbackDeconstruction(actor, sourceSnapshot, refundOperations);
+      if (!rollback.ok) {
+        console.error(`${MODULE_ID} | Deconstruction rollback was incomplete`, rollback.errors);
+      }
     }
     ui.notifications.warn(game.i18n.localize("MKSDC.Deconstruct.CouldNotRemoveItem"));
     return null;
+  } finally {
+    if (operationLock?.release) {
+      try {
+        await operationLock.release();
+      } catch (error) {
+        console.error(`${MODULE_ID} | Failed to release deconstruction economy lock`, error);
+      }
+    }
   }
 
   await postCraftingChatCard(actor, {
     actor,
     recipe,
-    recipeItem: { name: consumedItem.name, img: consumedItem.img, type: item.type },
+    recipeItem: { name: consumedItem.name, img: consumedItem.img, type: lockedItem?.type || item.type },
     requirements: { missing: [] },
     outcome: "deconstructed",
     outcomeLabel: game.i18n.localize("MKSDC.Outcome.Deconstructed"),
