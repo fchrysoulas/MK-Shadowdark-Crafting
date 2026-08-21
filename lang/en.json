@@ -175,6 +175,7 @@
   "MKSDC.Notifications.InvalidRecipeBook": "Invalid recipe book.",
   "MKSDC.Notifications.NoRecipeBookFile": "Choose a recipe book JSON file first.",
   "MKSDC.Notifications.RecipeBookImportFailed": "Recipe book import failed. Check the console for details.",
+  "MKSDC.Notifications.InvalidRecipeNumbers": "Recipe book import rejected: {details}",
   "MKSDC.Buttons.ManageBooks": "Manage Books",
   "MKSDC.Buttons.ApplyBook": "Activate Book",
   "MKSDC.Buttons.Rename": "Rename",
