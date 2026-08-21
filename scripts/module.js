@@ -9,7 +9,7 @@ import { buildRecipeBookData, deleteSavedRecipeBook, exportRecipeBook, importRec
 import { sanitizeStoredOutputSnapshots } from "./output-snapshot-migration.js";
 
 let activeApp = null;
-let openingApp = false;
+let activeRenderPromise = null;
 
 function selectedActor() {
   const controlled = canvas?.tokens?.controlled ?? [];
@@ -32,25 +32,35 @@ export function openCraftingApp(actor = null) {
     return null;
   }
 
-  // Scene-control compatibility layers can emit more than one callback for a
-  // single pointer action. Reuse the same application while it is rendering
-  // or already open instead of constructing another window.
-  if (activeApp && sameActor(activeApp.actor, target) && (openingApp || activeApp.rendered)) {
-    activeApp.bringToFront?.();
-    return activeApp;
+  // Reuse the same actor's application while an ApplicationV2 render Promise
+  // is pending or while the window remains rendered. Once a prior window has
+  // closed, rendered is false and no render Promise remains, so a fresh app is
+  // allowed to be constructed normally.
+  if (activeApp && sameActor(activeApp.actor, target)) {
+    if (activeRenderPromise || activeApp.rendered) {
+      activeApp.bringToFront?.();
+      return activeApp;
+    }
+    activeApp = null;
   }
 
-  openingApp = true;
+  const app = new CraftingApp(target);
+  activeApp = app;
+
   try {
-    activeApp = new CraftingApp(target);
-    activeApp.render({ force: true });
-    window.setTimeout(() => {
-      openingApp = false;
-    }, 0);
-    return activeApp;
+    activeRenderPromise = Promise.resolve(app.render({ force: true }))
+      .catch((error) => {
+        console.error(`${MODULE_ID} | Failed to render crafting application`, error);
+        if (activeApp === app) activeApp = null;
+        return null;
+      })
+      .finally(() => {
+        if (activeApp === app) activeRenderPromise = null;
+      });
+    return app;
   } catch (error) {
-    openingApp = false;
-    activeApp = null;
+    activeRenderPromise = null;
+    if (activeApp === app) activeApp = null;
     throw error;
   }
 }
