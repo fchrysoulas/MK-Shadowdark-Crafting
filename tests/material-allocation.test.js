@@ -20,13 +20,13 @@ globalThis.foundry = {
   utils: { getProperty }
 };
 
-function makeItem(id, name, qty, type = "Basic", { sourceId = "", compendiumSource = "" } = {}) {
-  const parent = { id: "actor-1", uuid: "Actor.actor-1", documentName: "Actor" };
+function makeItem(id, name, qty, type = "Basic", { sourceId = "", compendiumSource = "", actorId = "actor-1" } = {}) {
+  const parent = { id: actorId, uuid: `Actor.${actorId}`, documentName: "Actor" };
   return {
     id,
     name,
     type,
-    uuid: `Actor.actor-1.Item.${id}`,
+    uuid: `Actor.${actorId}.Item.${id}`,
     parent,
     system: { quantity: qty },
     _stats: { compendiumSource },
@@ -34,11 +34,11 @@ function makeItem(id, name, qty, type = "Basic", { sourceId = "", compendiumSour
   };
 }
 
-function makeActor(items) {
+function makeActor(items, id = "actor-1", name = "Crafter") {
   return {
-    id: "actor-1",
-    uuid: "Actor.actor-1",
-    name: "Crafter",
+    id,
+    uuid: `Actor.${id}`,
+    name,
     type: "character",
     isOwner: true,
     items
@@ -86,6 +86,22 @@ test("duplicate stacks on one actor are aggregated and allocated", () => {
   assert.equal(plan.ok, true);
   assert.equal(plan.selections[0].allocations.length, 2);
   assert.equal(plan.selections[0].allocations.reduce((sum, entry) => sum + entry.qty, 0), 5);
+});
+
+test("one material requirement can reserve quantities across selected resource actors", () => {
+  const crafter = makeActor([makeItem("iron-a", "Iron", 2)], "actor-1", "Crafter");
+  const helper = makeActor([
+    makeItem("iron-b", "Iron", 3, "Basic", { actorId: "actor-2" })
+  ], "actor-2", "Helper");
+  const groups = [{ alternatives: [{ name: "Iron", qty: 5 }] }];
+
+  const plan = planMaterialGroups([crafter, helper], groups);
+
+  assert.equal(plan.ok, true);
+  assert.deepEqual(plan.selections[0].allocations.map(({ actorId, itemId, qty }) => ({ actorId, itemId, qty })), [
+    { actorId: "Actor.actor-1", itemId: "iron-a", qty: 2 },
+    { actorId: "Actor.actor-2", itemId: "iron-b", qty: 3 }
+  ]);
 });
 
 test("actor-owned material drops do not persist their embedded instance UUID", () => {

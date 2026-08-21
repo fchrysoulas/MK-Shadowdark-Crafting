@@ -78,7 +78,8 @@ const {
   getRecipeById,
   mutateRecipeBooks,
   sanitizeOutputItemData,
-  setActiveRecipeBookIds
+  setActiveRecipeBookIds,
+  upsertRecipe
 } = await import("../scripts/recipe-utils.js");
 const { getAvailableItemTypes } = await import("../scripts/item-utils.js");
 const { getCraftableRecipeById, getRecipeExecutionSignature } = await import("../scripts/craftable-recipe.js");
@@ -162,6 +163,33 @@ test("book-scoped deletion leaves a same-ID recipe in another book untouched", {
 
   assert.equal(deleted, true);
   assert.equal(store.recipeBooks.alpha.recipes.length, 0);
+  assert.equal(store.recipeBooks.beta.recipes.length, 1);
+  assert.equal(store.recipeBooks.beta.recipes[0].outputName, "Beta Blade");
+});
+
+test("book-scoped upsert edits only the targeted same-ID recipe", { concurrency: false }, async () => {
+  store.recipeBooks = {
+    alpha: {
+      id: "alpha",
+      active: true,
+      recipes: [{ id: "shared-id", bookId: "alpha", outputName: "Alpha Blade", outputType: "Weapon" }]
+    },
+    beta: {
+      id: "beta",
+      active: true,
+      recipes: [{ id: "shared-id", bookId: "beta", outputName: "Beta Blade", outputType: "Weapon" }]
+    }
+  };
+
+  await upsertRecipe({
+    id: "shared-id",
+    bookId: "alpha",
+    outputName: "Reforged Alpha Blade",
+    outputType: "Weapon"
+  }, { bookId: "alpha" });
+
+  assert.equal(store.recipeBooks.alpha.recipes.length, 1);
+  assert.equal(store.recipeBooks.alpha.recipes[0].outputName, "Reforged Alpha Blade");
   assert.equal(store.recipeBooks.beta.recipes.length, 1);
   assert.equal(store.recipeBooks.beta.recipes[0].outputName, "Beta Blade");
 });
