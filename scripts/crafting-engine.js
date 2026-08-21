@@ -5,7 +5,7 @@ import { getCraftableRecipeById, getRecipeExecutionSignature } from "./craftable
 import { createActorItemFromRecipe, getAbilityMod, getResourceActorsFromIds, normalizeResourceActors } from "./item-utils.js";
 import { planMaterialGroups, sliceMaterialAllocations } from "./material-allocation.js";
 import { ResourceTransaction } from "./resource-transaction.js";
-import { postCraftingChatCard } from "./chat.js";
+import { postCraftingChatCard, postCraftingChatCardSafely } from "./chat.js";
 import { showDiceSoNiceRoll } from "./dice-so-nice.js";
 import { dialogValue, DialogV2 } from "./application-v2.js";
 
@@ -390,7 +390,7 @@ export class CraftingEngine {
     const finalOutcome = transactionFailed ? "blocked" : outcome;
     const finalOutcomeLabel = transactionFailed ? game.i18n.localize("MKSDC.Outcome.Blocked") : getOutcomeLabel(outcome);
 
-    await postCraftingChatCard(actor, {
+    const chatReport = await postCraftingChatCardSafely(actor, {
       actor,
       recipe,
       recipeItem,
@@ -418,7 +418,8 @@ export class CraftingEngine {
       rollAbility: ability,
       rollMode,
       consumed,
-      createdItem
+      createdItem,
+      chatReport
     };
   }
 }

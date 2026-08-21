@@ -1,6 +1,6 @@
 import { FLAGS, MODULE_ID } from "./constants.js";
 import { setting } from "./settings.js";
-import { postCraftingChatCard } from "./chat.js";
+import { postCraftingChatCardSafely } from "./chat.js";
 import {
   consumeOwnedItemDocument,
   getItemQuantity,
@@ -257,7 +257,6 @@ export function getDeconstructionPreview(item) {
   if (!item || isRecipeItem(item)) return null;
   const recipe = findRecipeForOutputItemSync(item);
   if (!recipe || !hasRecipeDeconstruction(recipe)) return null;
-
   const refundMaterials = getRefundMaterials(item, recipe);
   return {
     item,
@@ -466,7 +465,7 @@ export async function deconstructItem(actor, item, options = {}) {
     }
   }
 
-  await postCraftingChatCard(actor, {
+  const chatReport = await postCraftingChatCardSafely(actor, {
     actor,
     recipe,
     recipeItem: { name: consumedItem.name, img: consumedItem.img, type: lockedItem?.type || item.type },
@@ -481,7 +480,7 @@ export async function deconstructItem(actor, item, options = {}) {
   });
 
   ui.notifications.info(game.i18n.format("MKSDC.Deconstruct.Complete", { name: consumedItem.name }));
-  return { actor, recipe, item: consumedItem, recovered };
+  return { actor, recipe, item: consumedItem, recovered, chatReport };
 }
 
 function getItemIdFromElement(element) {
