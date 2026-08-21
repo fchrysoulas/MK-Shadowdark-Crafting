@@ -323,13 +323,17 @@ export async function setRecipeBooks(books) {
 
 export function getActiveRecipeBookIds() {
   const books = getRecipeBooks();
-  const activeFromBooks = Object.entries(books)
-    .filter(([, book]) => Boolean(book?.active))
-    .map(([id]) => id);
+  const entries = Object.entries(books);
+  const hasExplicitActiveState = entries.some(([, book]) => Object.hasOwn(book || {}, "active"));
 
-  // Book.active is authoritative. The separate setting is legacy compatibility
-  // only and is read as a fallback for worlds created before book.active existed.
-  if (activeFromBooks.length) return activeFromBooks;
+  // Explicit modern active flags are authoritative even when the resulting set
+  // is empty. Only genuinely legacy books with no active property use the old
+  // activeRecipeBookIds setting as migration input.
+  if (hasExplicitActiveState) {
+    return entries
+      .filter(([, book]) => book?.active === true)
+      .map(([id]) => id);
+  }
 
   try {
     const legacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
@@ -346,7 +350,7 @@ export async function setActiveRecipeBookIds(ids = []) {
   await mutateRecipeBooks((books) => {
     for (const [id, book] of Object.entries(books)) {
       const next = selected.has(id);
-      if (Boolean(book.active) === next) continue;
+      if (Object.hasOwn(book || {}, "active") && Boolean(book.active) === next) continue;
       book.active = next;
       book.updatedAt = nowIso();
     }
@@ -370,12 +374,24 @@ export async function setActiveRecipeBookIds(ids = []) {
 export async function ensureDefaultRecipeBook() {
   if (!game.user?.isGM) return getRecipeBooks()[DEFAULT_BOOK_ID] ?? null;
 
+  let legacyIds = [];
+  try {
+    legacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
+  } catch (_error) {
+    legacyIds = [];
+  }
+  const legacySet = new Set(legacyIds.map((id) => String(id || "").trim()).filter(Boolean));
+
   await mutateRecipeBooks((books) => {
+    const entriesBefore = Object.entries(books);
+    const wasUninitialized = entriesBefore.length === 0;
+    const hadExplicitActiveState = entriesBefore.some(([, book]) => Object.hasOwn(book || {}, "active"));
+
     if (!books[DEFAULT_BOOK_ID]) {
       books[DEFAULT_BOOK_ID] = {
         id: DEFAULT_BOOK_ID,
         name: game.i18n.localize("MKSDC.RecipeBooks.WorldRecipesName") || "World Recipes",
-        active: true,
+        active: wasUninitialized,
         recipes: [],
         recipeCount: 0,
         createdAt: nowIso(),
@@ -384,17 +400,29 @@ export async function ensureDefaultRecipeBook() {
       };
     }
 
-    const hasActive = Object.values(books).some((book) => Boolean(book?.active));
-    if (!hasActive && books[DEFAULT_BOOK_ID]) {
-      books[DEFAULT_BOOK_ID].active = true;
-      books[DEFAULT_BOOK_ID].updatedAt = nowIso();
+    // Migrate only books which actually predate book.active. Existing explicit
+    // false values are never overridden by the legacy compatibility mirror.
+    for (const [id, book] of Object.entries(books)) {
+      if (Object.hasOwn(book || {}, "active")) continue;
+      book.active = legacySet.has(id);
+      book.updatedAt = nowIso();
+    }
+
+    // If this was a legacy state with no active marker at all, establish one
+    // sensible default during migration. Modern all-inactive worlds skip this.
+    if (!hadExplicitActiveState && !wasUninitialized) {
+      const hasActive = Object.values(books).some((book) => book?.active === true);
+      if (!hasActive && legacySet.size === 0 && books[DEFAULT_BOOK_ID]) {
+        books[DEFAULT_BOOK_ID].active = true;
+        books[DEFAULT_BOOK_ID].updatedAt = nowIso();
+      }
     }
   });
 
   const activeIds = getActiveRecipeBookIds();
   try {
-    const legacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
-    if (JSON.stringify(legacyIds) !== JSON.stringify(activeIds)) {
+    const currentLegacyIds = foundry.utils.deepClone(setting("activeRecipeBookIds") || []);
+    if (JSON.stringify(currentLegacyIds) !== JSON.stringify(activeIds)) {
       await game.settings.set(MODULE_ID, "activeRecipeBookIds", activeIds);
     }
   } catch (error) {
