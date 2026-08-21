@@ -34,6 +34,13 @@ const {
   reserveOperationLeaseState
 } = await import("../scripts/operation-lock.js");
 
+test("SHA-256 verifier does not depend on Web Crypto", async () => {
+  assert.equal(
+    await hashOperationLeaseToken("abc"),
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  );
+});
+
 test("operation coordinator grants exactly one request until release", async () => {
   const queue = new OperationCoordinatorQueue({ leaseMs: 10_000, tokenFactory: () => `lease-${Math.random()}` });
 
@@ -59,21 +66,30 @@ test("operation coordinator grants exactly one request until release", async () 
   await queue.release(second.requestId, second.leaseToken);
 });
 
-test("cancel removes only a queued request with the private request secret", async () => {
-  const queue = new OperationCoordinatorQueue({ leaseMs: 10_000, tokenFactory: () => `lease-${Math.random()}` });
+test("cancel requires the private request secret for queued and active requests", async () => {
+  let releasedByCancel = 0;
+  const queue = new OperationCoordinatorQueue({
+    leaseMs: 10_000,
+    tokenFactory: () => `lease-${Math.random()}`,
+    afterRelease: async (_grant, details) => {
+      if (details?.cancelled) releasedByCancel += 1;
+    }
+  });
 
   const first = await queue.enqueue({ requestId: "one", requestSecret: "secret-one" });
   const secondPromise = queue.enqueue({ requestId: "two", requestSecret: "secret-two" });
-  const thirdPromise = queue.enqueue({ requestId: "three", requestSecret: "secret-three" });
 
-  assert.equal(queue.cancel("two", "wrong-secret"), false);
-  assert.equal(queue.cancel("two", "secret-two"), true);
+  assert.equal(await queue.cancel("two", "wrong-secret"), false);
+  assert.equal(await queue.cancel("two", "secret-two"), true);
   await assert.rejects(secondPromise, /cancelled/);
 
-  await queue.release(first.requestId, first.leaseToken);
-  const third = await thirdPromise;
-  assert.equal(queue.active?.requestId, "three");
-  await queue.release(third.requestId, third.leaseToken);
+  assert.equal(await queue.cancel("one", "wrong-secret"), false);
+  assert.equal(queue.active?.requestId, "one");
+  assert.equal(await queue.cancel("one", "secret-one"), true);
+  assert.equal(queue.active, null);
+  assert.equal(releasedByCancel, 1);
+
+  assert.equal(await queue.release(first.requestId, first.leaseToken), false);
 });
 
 test("replacement coordinator queue remains blocked while an earlier lease is still active", async () => {
