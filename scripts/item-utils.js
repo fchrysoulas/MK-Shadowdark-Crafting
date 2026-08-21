@@ -1,4 +1,5 @@
 import { FLAGS, ITEM_TYPE_ALIASES, MODULE_ID, SHADOWDARK_V350_ITEM_TYPES } from "./constants.js";
+import { resolveRecipeOutputDefinition } from "./output-definition.js";
 import { setting } from "./settings.js";
 
 export function normalizeName(value) {
@@ -596,23 +597,14 @@ export async function consumeOwnedItemDocument(item, qty = 1) {
 }
 
 export async function createActorItemFromRecipe(actor, recipe, resultInfo = {}) {
-  const outputUuid = String(recipe.outputUuid || "").trim();
   const defaultOutputImg = "icons/svg/item-bag.svg";
   const outputImg = String(recipe.outputImg || "").trim();
-  let data = null;
-
-  if (outputUuid) {
-    try {
-      const source = await fromUuid(outputUuid);
-      if (source) data = source.toObject();
-    } catch (error) {
-      console.warn(`${MODULE_ID} | Could not load output UUID`, outputUuid, error);
-    }
-  }
-
-  if (!data && recipe.outputItemData && typeof recipe.outputItemData === "object") {
-    data = foundry.utils.deepClone(recipe.outputItemData);
-  }
+  const resolvedOutput = await resolveRecipeOutputDefinition(recipe, {
+    resolveUuid: (uuid) => fromUuid(uuid),
+    clone: (value) => foundry.utils.deepClone(value),
+    onResolveError: (error, uuid) => console.warn(`${MODULE_ID} | Could not load output UUID`, uuid, error)
+  });
+  let data = resolvedOutput.data;
 
   if (!data) {
     data = {
