@@ -190,6 +190,7 @@ Fix in this order when relevant:
 ## Change Discipline
 
 - Keep `CHANGELOG.md` current in the same change as every user-visible feature, fix, UI change, compatibility change, or behavior change. Record unreleased work under `## Unreleased`; move those entries into a versioned section only during explicit release preparation.
+- Write changelog entries in simple, user-facing language. Keep them short and avoid implementation details unless users need those details to understand the change.
 - Do not change unrelated files.
 - Do not reformat large files solely for style.
 - Do not rename public APIs without explicit instruction.
