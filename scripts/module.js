@@ -6,6 +6,7 @@ import { CraftingEngine } from "./crafting-engine.js";
 import { deconstructItem } from "./deconstruction-engine.js";
 import { createSampleRecipes, deleteRecipeItem, ensureDefaultRecipeBook, getRecipeData, setRecipeData, createRecipeItem } from "./recipe-utils.js";
 import { buildRecipeBookData, deleteSavedRecipeBook, exportRecipeBook, importRecipeBookData, openExportRecipeBookDialog, openImportRecipeBookDialog, openManageRecipeBooks, openSaveRecipeBookDialog, renameSavedRecipeBook, saveRecipeBook, updateSavedRecipeBookFromWorld } from "./recipe-books.js";
+import { sanitizeStoredOutputSnapshots } from "./output-snapshot-migration.js";
 
 let activeApp = null;
 let openingApp = false;
@@ -186,6 +187,10 @@ Hooks.once("ready", async () => {
   if (game.user.isGM) {
     try {
       await ensureDefaultRecipeBook();
+      const snapshotMigration = await sanitizeStoredOutputSnapshots();
+      if (snapshotMigration.sanitizedCount > 0) {
+        log("sanitized stored output snapshots", snapshotMigration);
+      }
     } catch (error) {
       console.error(`${MODULE_ID} | Failed to initialize recipe books`, error);
     }
