@@ -4,6 +4,7 @@ All notable changes to MK Shadowdark Crafting are documented here.
 
 ## Unreleased
 
+- Hardened crafting/deconstruction economy serialization across coordinator failover using targeted Foundry user queries, renewable private lease tokens, and a hashed persistent lease record.
 - Restyled the crafting, recipe editor, recipe book, dialog, and chat interfaces with a consistent high-contrast palette and Montserrat typography.
 - Added visible ApplicationV2 scrollbars and a reliable Font Awesome close icon.
 - Aligned Deconstruct mode with the Crafting dense-list hierarchy, spacing, typography, material order, and responsive behavior.
