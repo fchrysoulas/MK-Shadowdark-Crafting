@@ -1,5 +1,6 @@
 import { DEFAULT_BOOK_ID, MODULE_ID, TEMPLATES } from "./constants.js";
 import { createRecipeId, getActiveRecipeBookIds, getRecipeBooks, getRecipeData, getRecipeEntriesForActor, isRecipeItem, mutateRecipeBooks, sanitizeRecipeData, setActiveRecipeBookIds } from "./recipe-utils.js";
+import { assertValidRecipeImportNumbers, RecipeImportValidationError } from "./recipe-import-validation.js";
 import { confirmDialog, dialogFile, dialogValue, DialogV2, MKApplicationV2 } from "./application-v2.js";
 
 const BOOK_KIND = "mk-shadowdark-crafting.recipe-book";
@@ -116,6 +117,7 @@ export async function importRecipeBookData(data, { mode = "create", activate = t
     return null;
   }
   const raw = typeof data === "string" ? JSON.parse(data) : foundry.utils.deepClone(data);
+  assertValidRecipeImportNumbers(raw);
   const incomingBase = raw?.kind === BOOK_KIND || Array.isArray(raw?.recipes) ? raw : { name: raw?.name || game.i18n.localize("MKSDC.RecipeBooks.ImportedName"), recipes: [] };
   const baseId = String(incomingBase.id || slugify(incomingBase.name) || DEFAULT_BOOK_ID).trim();
   const id = mode === "merge" ? baseId : `${slugify(incomingBase.name || "imported-book")}-${foundry.utils.randomID?.(6) || Date.now()}`;
@@ -433,7 +435,12 @@ export async function openImportRecipeBookDialog() {
           return await importRecipeBookData(JSON.parse(text), { mode, activate: true });
         } catch (error) {
           console.error(`${MODULE_ID} | Recipe book import failed`, error);
-          ui.notifications.error(game.i18n.localize("MKSDC.Notifications.RecipeBookImportFailed"));
+          if (error instanceof RecipeImportValidationError) {
+            const details = error.errors.slice(0, 3).join("; ");
+            ui.notifications.error(game.i18n.format("MKSDC.Notifications.InvalidRecipeNumbers", { details }));
+          } else {
+            ui.notifications.error(game.i18n.localize("MKSDC.Notifications.RecipeBookImportFailed"));
+          }
           return null;
         }
       } },
