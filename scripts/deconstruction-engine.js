@@ -2,14 +2,12 @@ import { FLAGS, MODULE_ID } from "./constants.js";
 import { setting } from "./settings.js";
 import { postCraftingChatCard } from "./chat.js";
 import {
-  addOwnedItemQuantity,
   consumeOwnedItemDocument,
-  findOwnedItemByName,
-  findOwnedItemForMaterial,
   getItemQuantity,
   getItemQuantityPath,
   normalizeName
 } from "./item-utils.js";
+import { addOwnedMaterialQuantity, getMatchingOwnedMaterialItems } from "./material-identity.js";
 import { getRecipeDeconstructMaterials, getRecipeEntriesForActor, hasRecipeDeconstruction, isRecipeItem, sanitizeRecipeData } from "./recipe-utils.js";
 import { aggregateRefundMaterials, normalizeRecoverableState, takeOneRefund } from "./deconstruction-refund.js";
 import { confirmDialog } from "./application-v2.js";
@@ -419,9 +417,9 @@ export async function deconstructItem(actor, item, options = {}) {
     await persistGeneratedRefundState(item, recipe, refundPlan);
 
     for (const material of refundMaterials) {
-      const existing = findOwnedItemForMaterial(actor, material) || findOwnedItemByName(actor, material.name);
+      const existing = getMatchingOwnedMaterialItems(actor, material)[0] ?? null;
       const existingSnapshot = snapshotItem(existing);
-      const recoveredItem = await addOwnedItemQuantity(actor, material, material.qty);
+      const recoveredItem = await addOwnedMaterialQuantity(actor, material, material.qty);
 
       refundOperations.push({
         snapshot: existingSnapshot,
