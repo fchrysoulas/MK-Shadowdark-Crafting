@@ -161,6 +161,9 @@ test("concurrent transactions cannot lose gold deductions through stale writes",
 
   const firstResult = await first.consumeGold(7);
   assert.equal(firstResult.ok, true);
+  assert.equal(firstResult.consumed.length, 1);
+  assert.equal(firstResult.consumed[0].kind, "gold");
+  assert.equal(firstResult.consumed[0].qty, 7);
   assert.equal(actor.system.coins.gp, 3);
 
   let secondFinished = false;
