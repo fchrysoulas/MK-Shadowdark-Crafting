@@ -81,6 +81,7 @@ const {
   setActiveRecipeBookIds
 } = await import("../scripts/recipe-utils.js");
 const { getAvailableItemTypes } = await import("../scripts/item-utils.js");
+const { sanitizeStoredOutputSnapshots } = await import("../scripts/output-snapshot-migration.js");
 
 test("same-client concurrent recipe book mutations are serialized without lost updates", { concurrency: false }, async () => {
   store.recipeBooks = {};
@@ -242,4 +243,43 @@ test("unidentified Shadowdark snapshots do not reveal concealed identity or effe
   assert.equal(snapshot.system.identification.description, undefined);
   assert.equal(snapshot.effects, undefined);
   assert.doesNotMatch(JSON.stringify(snapshot), /Secret King|hidden true powers|Hidden Fire Power/);
+});
+
+test("stored unidentified snapshots are sanitized out of the world setting", { concurrency: false }, async () => {
+  store.recipeBooks = {
+    alpha: {
+      id: "alpha",
+      active: false,
+      recipes: [{
+        id: "secret-recipe",
+        bookId: "alpha",
+        outputName: "Mysterious Sword",
+        outputType: "Weapon",
+        outputItemData: {
+          name: "Mysterious Sword",
+          type: "Weapon",
+          system: {
+            description: "Visible text",
+            identification: {
+              identified: false,
+              name: "Secret True Name",
+              description: "Secret true description"
+            }
+          },
+          effects: [{ name: "Secret Effect", changes: [] }]
+        }
+      }]
+    }
+  };
+
+  const result = await sanitizeStoredOutputSnapshots();
+  const stored = store.recipeBooks.alpha.recipes[0].outputItemData;
+
+  assert.equal(result.changed, true);
+  assert.equal(result.sanitizedCount, 1);
+  assert.equal(stored.system.identification.identified, false);
+  assert.equal(stored.system.identification.name, undefined);
+  assert.equal(stored.system.identification.description, undefined);
+  assert.equal(stored.effects, undefined);
+  assert.doesNotMatch(JSON.stringify(store.recipeBooks), /Secret True Name|Secret true description|Secret Effect/);
 });
