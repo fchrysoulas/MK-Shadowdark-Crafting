@@ -1,9 +1,9 @@
 import {
   getActorResourceId,
   getItemQuantity,
-  normalizeName,
   normalizeResourceActors
 } from "./item-utils.js";
+import { materialMatchesItemIdentity } from "./material-identity.js";
 
 function sourceKey(source) {
   return `${source.actorId}::${source.itemId}`;
@@ -11,36 +11,6 @@ function sourceKey(source) {
 
 function cloneLedger(ledger) {
   return new Map(ledger);
-}
-
-function itemSourceMatchesUuid(item, uuid) {
-  const target = String(uuid || "").trim();
-  if (!target || !item) return false;
-  if (String(item.uuid || "").trim() === target) return true;
-
-  const coreSource = String(item.getFlag?.("core", "sourceId") || "").trim();
-  if (coreSource === target) return true;
-
-  const compendiumSource = String(item._stats?.compendiumSource || "").trim();
-  if (compendiumSource === target) return true;
-
-  const duplicateSource = String(item._stats?.duplicateSource || "").trim();
-  return duplicateSource === target;
-}
-
-function materialMatchesItem(item, material = {}) {
-  if (!item || !material) return false;
-
-  const materialUuid = String(material.uuid || "").trim();
-  if (materialUuid && !itemSourceMatchesUuid(item, materialUuid)) return false;
-
-  const targetName = normalizeName(material.name);
-  if (targetName && normalizeName(item.name) !== targetName) return false;
-
-  const targetType = normalizeName(material.type);
-  if (targetType && normalizeName(item.type) !== targetType) return false;
-
-  return true;
 }
 
 export function getMaterialAvailability(resourceActors, material = {}) {
@@ -52,7 +22,7 @@ export function getMaterialAvailability(resourceActors, material = {}) {
     let actorQty = 0;
 
     for (const item of actor.items || []) {
-      if (!materialMatchesItem(item, material)) continue;
+      if (!materialMatchesItemIdentity(item, material)) continue;
       const qty = Math.max(0, Number(getItemQuantity(item)) || 0);
       if (qty <= 0) continue;
 
