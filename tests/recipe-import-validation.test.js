@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import {
   assertValidRecipeImportNumbers,
   RecipeImportValidationError,
@@ -84,4 +86,15 @@ test("unsafe integers are rejected", () => {
 test("zero gold cost remains valid", () => {
   const result = validateRecipeImportNumbers(bookWithRecipe({ outputQty: 1, dc: 1, goldCost: 0 }));
   assert.equal(result.ok, true);
+});
+
+test("programmatic Recipe Book import validates before its first mutation", async () => {
+  const source = await readFile(path.join(process.cwd(), "scripts/recipe-books.js"), "utf8");
+  const importIndex = source.indexOf("export async function importRecipeBookData");
+  const validationIndex = source.indexOf("assertValidRecipeImportNumbers(raw)", importIndex);
+  const mutationIndex = source.indexOf("await mutateBooks", importIndex);
+
+  assert.ok(importIndex >= 0);
+  assert.ok(validationIndex > importIndex, "numeric validation should occur inside importRecipeBookData");
+  assert.ok(mutationIndex > validationIndex, "numeric validation must run before any Recipe Book mutation");
 });
