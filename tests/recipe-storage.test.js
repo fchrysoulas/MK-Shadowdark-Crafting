@@ -212,3 +212,34 @@ test("output snapshots retain item mechanics but strip unrelated metadata and fl
   assert.equal(snapshot.effects[0].flags, undefined);
   assert.deepEqual(snapshot.effects[0].changes, [{ key: "system.test", mode: 2, value: "1" }]);
 });
+
+test("unidentified Shadowdark snapshots do not reveal concealed identity or effects", { concurrency: false }, () => {
+  const snapshot = sanitizeOutputItemData({
+    name: "Mysterious Sword",
+    type: "Weapon",
+    img: "icons/mystery.webp",
+    system: {
+      quantity: 1,
+      description: "A dull black sword with no visible markings.",
+      identification: {
+        identified: false,
+        name: "Blade of the Secret King",
+        description: "The hidden true powers and curse."
+      }
+    },
+    effects: [
+      {
+        name: "Hidden Fire Power",
+        changes: [{ key: "system.damage", mode: 2, value: "1d6" }]
+      }
+    ]
+  }, { outputName: "Fallback", outputType: "Weapon" });
+
+  assert.equal(snapshot.name, "Mysterious Sword");
+  assert.equal(snapshot.system.description, "A dull black sword with no visible markings.");
+  assert.equal(snapshot.system.identification.identified, false);
+  assert.equal(snapshot.system.identification.name, undefined);
+  assert.equal(snapshot.system.identification.description, undefined);
+  assert.equal(snapshot.effects, undefined);
+  assert.doesNotMatch(JSON.stringify(snapshot), /Secret King|hidden true powers|Hidden Fire Power/);
+});
