@@ -100,6 +100,7 @@ export const DEFAULT_RECIPE = {
   craftType: "basic",
   outputName: "New Crafted Item",
   outputUuid: "",
+  outputSourceMode: "snapshot",
   outputType: "Basic",
   category: "",
   outputImg: "icons/svg/item-bag.svg",
