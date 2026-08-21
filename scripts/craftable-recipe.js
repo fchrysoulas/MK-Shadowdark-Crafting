@@ -1,3 +1,4 @@
+import { normalizeOutputSourceMode } from "./output-definition.js";
 import {
   getActiveRecipeBookIds,
   getRecipeBooks,
@@ -84,6 +85,7 @@ export function getRecipeExecutionSignature(recipe = {}) {
     enabled: recipe.enabled !== false,
     outputName: String(recipe.outputName || ""),
     outputUuid: String(recipe.outputUuid || ""),
+    outputSourceMode: normalizeOutputSourceMode(recipe.outputSourceMode),
     outputType: String(recipe.outputType || ""),
     outputImg: String(recipe.outputImg || ""),
     outputQty: Math.max(1, Number(recipe.outputQty) || 1),
