@@ -97,7 +97,11 @@ Recipe Books are stored in a **world-scoped Foundry setting**. Inactive books ar
 
 Output item snapshots stored inside recipe data are deliberately reduced to the fields needed to recreate the crafted item: item name, type, image, Shadowdark `system` data, and sanitized embedded effects. Ownership, folders, document IDs, arbitrary module flags, effect origins, and third-party effect flags are not retained in the snapshot.
 
-If a future feature requires genuinely secret recipe books, it should use GM-only document/storage semantics rather than relying on inactive world-setting entries.
+Recipes use **Saved Snapshot** output mode by default. When a saved snapshot exists, it is the authoritative output definition, so editing or deleting the Item that was originally dropped into the Recipe Editor does not silently change what the recipe creates. Older recipes that only contain an output UUID and no snapshot retain a legacy UUID fallback.
+
+A GM can deliberately select **Linked Source** in the Recipe Editor. Linked Source resolves the current `outputUuid` when crafting and therefore intentionally follows later source-document changes. It can preserve data that the client-readable snapshot intentionally omits, but it is **not a secrecy boundary**: only use Linked Source when it is acceptable for the crafting client to resolve that source. If the linked source cannot be resolved, the module falls back to the saved safe snapshot when one exists.
+
+If a future feature requires genuinely secret recipe books or secret linked-output blueprints, it should use GM-authoritative document/storage semantics rather than relying on inactive world-setting entries.
 
 ## Creating Recipes
 
@@ -106,6 +110,7 @@ A GM can click **Create Recipe** in the Crafting Panel.
 In the Recipe Editor:
 
 - Drop an item into the output slot to set what the recipe creates.
+- Choose **Saved Snapshot** for deterministic output, or deliberately choose **Linked Source** when the output should follow the current source UUID.
 - Set the output type, quantity, category, DC, time, and notes.
 - Choose one or more abilities that can be used for crafting.
 - Add optional gold, tool, and station requirements.
