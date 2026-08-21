@@ -7,22 +7,15 @@ import { deconstructItem } from "./deconstruction-engine.js";
 import { createSampleRecipes, deleteRecipeItem, ensureDefaultRecipeBook, getRecipeData, setRecipeData, createRecipeItem } from "./recipe-utils.js";
 import { buildRecipeBookData, deleteSavedRecipeBook, exportRecipeBook, importRecipeBookData, openExportRecipeBookDialog, openImportRecipeBookDialog, openManageRecipeBooks, openSaveRecipeBookDialog, renameSavedRecipeBook, saveRecipeBook, updateSavedRecipeBookFromWorld } from "./recipe-books.js";
 import { sanitizeStoredOutputSnapshots } from "./output-snapshot-migration.js";
+import { CraftingWindowRegistry } from "./crafting-window-registry.js";
 
-let activeApp = null;
-let activeRenderPromise = null;
+const craftingWindows = new CraftingWindowRegistry();
 
 function selectedActor() {
   const controlled = canvas?.tokens?.controlled ?? [];
   const tokenActor = controlled[0]?.actor;
   if (tokenActor) return tokenActor;
   return game.user.character ?? null;
-}
-
-function sameActor(a, b) {
-  if (!a || !b) return false;
-  const aId = String(a.uuid || a.id || "").trim();
-  const bId = String(b.uuid || b.id || "").trim();
-  return Boolean(aId && bId && aId === bId);
 }
 
 export function openCraftingApp(actor = null) {
@@ -32,35 +25,32 @@ export function openCraftingApp(actor = null) {
     return null;
   }
 
-  // Reuse the same actor's application while an ApplicationV2 render Promise
-  // is pending or while the window remains rendered. Once a prior window has
-  // closed, rendered is false and no render Promise remains, so a fresh app is
-  // allowed to be constructed normally.
-  if (activeApp && sameActor(activeApp.actor, target)) {
-    if (activeRenderPromise || activeApp.rendered) {
-      activeApp.bringToFront?.();
-      return activeApp;
-    }
-    activeApp = null;
+  // Keep one live or render-pending CraftingApp per actor. Other actors may
+  // have their own windows open at the same time without displacing this one.
+  craftingWindows.prune();
+  const existing = craftingWindows.get(target);
+  if (existing) {
+    existing.app.bringToFront?.();
+    return existing.app;
   }
 
   const app = new CraftingApp(target);
-  activeApp = app;
+  craftingWindows.track(target, app);
 
   try {
-    activeRenderPromise = Promise.resolve(app.render({ force: true }))
+    const renderPromise = Promise.resolve(app.render({ force: true }))
       .catch((error) => {
         console.error(`${MODULE_ID} | Failed to render crafting application`, error);
-        if (activeApp === app) activeApp = null;
+        craftingWindows.remove(target, app);
         return null;
       })
       .finally(() => {
-        if (activeApp === app) activeRenderPromise = null;
+        craftingWindows.clearRenderPromise(target, app);
       });
+    craftingWindows.setRenderPromise(target, app, renderPromise);
     return app;
   } catch (error) {
-    activeRenderPromise = null;
-    if (activeApp === app) activeApp = null;
+    craftingWindows.remove(target, app);
     throw error;
   }
 }
