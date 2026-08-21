@@ -200,6 +200,12 @@ async function clearPersistedLease(requestId, leaseToken) {
   return true;
 }
 
+async function expirePersistedLease(requestId, leaseToken) {
+  const current = readPersistedLeaseState();
+  if (!current || current.expiresAt > nowMs()) return false;
+  return clearPersistedLease(requestId, leaseToken);
+}
+
 export function getPersistedOperationLeaseState() {
   return readPersistedLeaseState();
 }
@@ -210,6 +216,10 @@ export async function reserveOperationLeaseState(grant) {
 
 export async function clearOperationLeaseState(requestId, leaseToken) {
   return clearPersistedLease(requestId, leaseToken);
+}
+
+export async function expireOperationLeaseState(requestId, leaseToken) {
+  return expirePersistedLease(requestId, leaseToken);
 }
 
 export class OperationCoordinatorQueue {
@@ -403,7 +413,9 @@ export class OperationCoordinatorQueue {
 const coordinatorQueue = new OperationCoordinatorQueue({
   beforeGrant: reservePersistedLease,
   onRenew: (grant) => updatePersistedLeaseExpiry(grant.requestId, grant.leaseToken, grant.expiresAt),
-  afterRelease: (grant) => clearPersistedLease(grant.requestId, grant.leaseToken)
+  afterRelease: (grant, details = {}) => details.expired
+    ? expirePersistedLease(grant.requestId, grant.leaseToken)
+    : clearPersistedLease(grant.requestId, grant.leaseToken)
 });
 let queriesRegistered = false;
 
