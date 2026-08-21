@@ -68,6 +68,7 @@
   "MKSDC.Notifications.RecipeNotFound": "Recipe not found.",
   "MKSDC.Notifications.RequirementsMissing": "Crafting requirements are missing.",
   "MKSDC.Notifications.OutputCreateFailed": "The crafting roll succeeded, but the output item could not be created.",
+  "MKSDC.Notifications.ChatReportFailed": "The inventory operation completed, but its chat card could not be posted. Do not retry the operation.",
   "MKSDC.Notifications.GMOnly": "Only a GM can do that.",
   "MKSDC.Notifications.CompendiumRecipeReadOnly": "Compendium recipes are read-only. Import the item first to edit it.",
   "MKSDC.Notifications.RecipeUpdated": "Recipe updated.",
