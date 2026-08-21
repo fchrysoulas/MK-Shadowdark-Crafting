@@ -1,6 +1,7 @@
 import { MODULE_ID } from "./constants.js";
 import { setting } from "./settings.js";
-import { checkRecipeRequirements, getRecipeById } from "./recipe-utils.js";
+import { checkRecipeRequirements } from "./recipe-utils.js";
+import { getCraftableRecipeById, getRecipeExecutionSignature } from "./craftable-recipe.js";
 import { createActorItemFromRecipe, getAbilityMod, getResourceActorsFromIds, normalizeResourceActors } from "./item-utils.js";
 import { planMaterialGroups, sliceMaterialAllocations } from "./material-allocation.js";
 import { ResourceTransaction } from "./resource-transaction.js";
@@ -100,6 +101,16 @@ function getAllowedAbilities(recipe) {
   return Array.from(new Set(abilities.length ? abilities : ["int"]));
 }
 
+function resolveResourceActors(actor, options = {}) {
+  if (Array.isArray(options.resourceActors)) {
+    return normalizeResourceActors(actor, options.resourceActors);
+  }
+  if (Array.isArray(options.resourceActorIds)) {
+    return getResourceActorsFromIds(actor, options.resourceActorIds);
+  }
+  return normalizeResourceActors(actor, null);
+}
+
 function buildOutcomeMaterialAllocations(materialPlan, outcome) {
   const allocations = [];
 
@@ -185,24 +196,17 @@ export class CraftingEngine {
       return null;
     }
 
-    const recipe = await getRecipeById(recipeId, { bookId: options.bookId });
+    let recipe = await getCraftableRecipeById(recipeId, { bookId: options.bookId });
     if (!recipe) {
       ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
       return null;
     }
 
-    const recipeItem = { id: recipe.id, uuid: recipe.id, name: recipe.outputName, img: recipe.outputImg, type: recipe.outputType };
-    let resourceActors = null;
-    if (Array.isArray(options.resourceActors)) {
-      resourceActors = normalizeResourceActors(actor, options.resourceActors);
-    } else if (Array.isArray(options.resourceActorIds)) {
-      resourceActors = getResourceActorsFromIds(actor, options.resourceActorIds);
-    } else {
-      resourceActors = normalizeResourceActors(actor, null);
-    }
-
-    const requirements = checkRecipeRequirements(actor, recipe, { resourceActors });
-    const materialPlan = requirements.materialAllocation ?? planMaterialGroups(resourceActors, recipe.materialGroups ?? []);
+    const initialExecutionSignature = getRecipeExecutionSignature(recipe);
+    let recipeItem = { id: recipe.id, uuid: recipe.id, name: recipe.outputName, img: recipe.outputImg, type: recipe.outputType };
+    let resourceActors = resolveResourceActors(actor, options);
+    let requirements = checkRecipeRequirements(actor, recipe, { resourceActors });
+    let materialPlan = requirements.materialAllocation ?? planMaterialGroups(resourceActors, recipe.materialGroups ?? []);
 
     if (!requirements.ok) {
       ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RequirementsMissing"));
@@ -227,7 +231,47 @@ export class CraftingEngine {
     const rollConfig = await showCraftingRollDialog(actor, recipe);
     if (!rollConfig) return null;
 
-    const ability = rollConfig.ability || recipe.ability || "int";
+    // Re-resolve the same active book after the modal interaction. A recipe
+    // which was disabled/deactivated/deleted, or whose execution-critical data
+    // changed while the dialog was open, must not continue with stale state.
+    const freshRecipe = await getCraftableRecipeById(recipe.id, { bookId: recipe.bookId });
+    if (!freshRecipe || getRecipeExecutionSignature(freshRecipe) !== initialExecutionSignature) {
+      ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
+      return null;
+    }
+
+    recipe = freshRecipe;
+    recipeItem = { id: recipe.id, uuid: recipe.id, name: recipe.outputName, img: recipe.outputImg, type: recipe.outputType };
+    resourceActors = resolveResourceActors(actor, options);
+    requirements = checkRecipeRequirements(actor, recipe, { resourceActors });
+    materialPlan = requirements.materialAllocation ?? planMaterialGroups(resourceActors, recipe.materialGroups ?? []);
+
+    if (!requirements.ok) {
+      ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RequirementsMissing"));
+      await postCraftingChatCard(actor, {
+        actor,
+        recipe,
+        recipeItem,
+        requirements,
+        outcome: "blocked",
+        outcomeLabel: game.i18n.localize("MKSDC.Outcome.Blocked"),
+        rollHtml: "",
+        rollTotal: null,
+        dc: recipe.dc,
+        d20: null,
+        consumed: [],
+        createdItem: null,
+        notes: requirements.missing
+      });
+      return null;
+    }
+
+    const ability = String(rollConfig.ability || recipe.ability || "int").toLowerCase();
+    if (!getAllowedAbilities(recipe).includes(ability)) {
+      ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
+      return null;
+    }
+
     const rollMode = rollConfig.rollMode || "normal";
     const mod = getAbilityMod(actor, ability);
     const roll = await new Roll(getRollFormula(rollMode), { mod }).evaluate();
@@ -243,6 +287,16 @@ export class CraftingEngine {
     const transaction = new ResourceTransaction(resourceActors);
 
     try {
+      // Acquire the shared economy lock before the final recipe lookup. This
+      // closes the modal/roll-to-mutation window without consuming anything.
+      await transaction.begin();
+      const lockedRecipe = await getCraftableRecipeById(recipe.id, { bookId: recipe.bookId });
+      if (!lockedRecipe || getRecipeExecutionSignature(lockedRecipe) !== initialExecutionSignature) {
+        ui.notifications.warn(game.i18n.localize("MKSDC.Notifications.RecipeNotFound"));
+        await transaction.rollback();
+        return null;
+      }
+
       const outcomePlan = buildOutcomeMaterialAllocations(materialPlan, outcome);
       if (!outcomePlan.ok) {
         transactionFailed = true;

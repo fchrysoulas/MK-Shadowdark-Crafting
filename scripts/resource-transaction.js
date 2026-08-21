@@ -39,6 +39,11 @@ export class ResourceTransaction {
     this.closed = false;
   }
 
+  async begin() {
+    await this._ensureOperationLock();
+    return this;
+  }
+
   _getActor(actorId) {
     return this.actorMap.get(String(actorId || "")) ?? null;
   }

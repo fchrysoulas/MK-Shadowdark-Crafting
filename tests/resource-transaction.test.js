@@ -86,6 +86,26 @@ function makeActor(items) {
 
 const { ResourceTransaction } = await import("../scripts/resource-transaction.js");
 
+test("a transaction can reserve the operation lock before mutation", async () => {
+  const actor = makeActor([]);
+  const first = new ResourceTransaction([actor]);
+  const second = new ResourceTransaction([actor]);
+
+  await first.begin();
+  let secondStarted = false;
+  const secondPromise = second.begin().then(() => {
+    secondStarted = true;
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(secondStarted, false);
+
+  await first.rollback();
+  await secondPromise;
+  assert.equal(secondStarted, true);
+  await second.rollback();
+});
+
 test("partial material mutation failure rolls earlier changes back", async () => {
   const first = makeItem("first", 5);
   const second = makeItem("second", 5, { failOnce: true });

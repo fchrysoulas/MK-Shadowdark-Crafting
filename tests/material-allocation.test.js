@@ -94,14 +94,14 @@ test("actor-owned material drops do not persist their embedded instance UUID", (
 });
 
 test("actor-owned material drops prefer a stable source UUID when available", () => {
-  const item = makeItem("iron", "Iron", 2, { sourceId: "Compendium.shadowdark.items.Item.iron" });
+  const item = makeItem("iron", "Iron", 2, "Basic", { sourceId: "Compendium.shadowdark.items.Item.iron" });
   assert.equal(getStableMaterialUuid(item, item.uuid), "Compendium.shadowdark.items.Item.iron");
 });
 
 test("source-specific materials match copies by stable source metadata", () => {
   const sourceUuid = "Compendium.shadowdark.items.Item.iron";
-  const copied = makeItem("iron-copy", "Iron", 2, { sourceId: sourceUuid });
-  const other = makeItem("other-iron", "Iron", 9, { sourceId: "Compendium.other.Item.iron" });
+  const copied = makeItem("iron-copy", "Iron", 2, "Basic", { sourceId: sourceUuid });
+  const other = makeItem("other-iron", "Iron", 9, "Basic", { sourceId: "Compendium.other.Item.iron" });
   const actor = makeActor([copied, other]);
   const material = { name: "Iron", type: "Basic", uuid: sourceUuid, qty: 2 };
 
@@ -117,7 +117,7 @@ test("source-specific materials match copies by stable source metadata", () => {
 
 test("UUID-specific recovery matching never falls back to an unrelated same-name stack", () => {
   const actor = makeActor([
-    makeItem("wrong", "Iron", 20, { sourceId: "Compendium.other.Item.iron" })
+    makeItem("wrong", "Iron", 20, "Basic", { sourceId: "Compendium.other.Item.iron" })
   ]);
   const material = {
     name: "Iron",

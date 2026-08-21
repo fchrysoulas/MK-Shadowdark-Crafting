@@ -81,6 +81,7 @@ const {
   setActiveRecipeBookIds
 } = await import("../scripts/recipe-utils.js");
 const { getAvailableItemTypes } = await import("../scripts/item-utils.js");
+const { getCraftableRecipeById, getRecipeExecutionSignature } = await import("../scripts/craftable-recipe.js");
 const { sanitizeStoredOutputSnapshots } = await import("../scripts/output-snapshot-migration.js");
 
 test("same-client concurrent recipe book mutations are serialized without lost updates", { concurrency: false }, async () => {
@@ -163,6 +164,86 @@ test("book-scoped deletion leaves a same-ID recipe in another book untouched", {
   assert.equal(store.recipeBooks.alpha.recipes.length, 0);
   assert.equal(store.recipeBooks.beta.recipes.length, 1);
   assert.equal(store.recipeBooks.beta.recipes[0].outputName, "Beta Blade");
+});
+
+test("runtime craft lookup rejects recipes from inactive books", { concurrency: false }, async () => {
+  store.recipeBooks = {
+    active: {
+      id: "active",
+      active: true,
+      recipes: [{ id: "visible", bookId: "active", outputName: "Visible", outputType: "Basic" }]
+    },
+    hidden: {
+      id: "hidden",
+      active: false,
+      recipes: [{ id: "secret", bookId: "hidden", outputName: "Secret", outputType: "Basic" }]
+    }
+  };
+  store.activeRecipeBookIds = ["active"];
+
+  assert.equal(await getCraftableRecipeById("secret", { bookId: "hidden" }), null);
+  assert.equal((await getCraftableRecipeById("visible", { bookId: "active" }))?.outputName, "Visible");
+});
+
+test("runtime craft lookup rejects disabled recipes even in active books", { concurrency: false }, async () => {
+  store.recipeBooks = {
+    alpha: {
+      id: "alpha",
+      active: true,
+      recipes: [{ id: "disabled", bookId: "alpha", enabled: false, outputName: "Disabled", outputType: "Basic" }]
+    }
+  };
+  store.activeRecipeBookIds = ["alpha"];
+
+  assert.equal(await getCraftableRecipeById("disabled", { bookId: "alpha" }), null);
+});
+
+test("unscoped runtime lookup cannot let an inactive same-ID recipe win", { concurrency: false }, async () => {
+  store.recipeBooks = {
+    hidden: {
+      id: "hidden",
+      active: false,
+      recipes: [{ id: "shared", bookId: "hidden", outputName: "Hidden Version", outputType: "Basic" }]
+    },
+    active: {
+      id: "active",
+      active: true,
+      recipes: [{ id: "shared", bookId: "active", outputName: "Active Version", outputType: "Basic" }]
+    }
+  };
+  store.activeRecipeBookIds = ["active"];
+
+  const recipe = await getCraftableRecipeById("shared");
+  assert.equal(recipe?.outputName, "Active Version");
+  assert.equal(recipe?.bookId, "active");
+});
+
+test("execution signature changes for mechanical recipe edits but not presentation-only edits", { concurrency: false }, () => {
+  const base = {
+    id: "recipe",
+    bookId: "alpha",
+    enabled: true,
+    outputName: "Blade",
+    outputType: "Weapon",
+    outputQty: 1,
+    dc: 12,
+    abilities: ["str"],
+    materialGroups: [{ alternatives: [{ name: "Iron", qty: 2, type: "Basic" }] }],
+    goldCost: 5,
+    notes: "old note",
+    time: "1 hour"
+  };
+
+  const signature = getRecipeExecutionSignature(base);
+  assert.notEqual(getRecipeExecutionSignature({ ...base, dc: 15 }), signature);
+  assert.notEqual(getRecipeExecutionSignature({ ...base, goldCost: 7 }), signature);
+  assert.notEqual(getRecipeExecutionSignature({ ...base, abilities: ["dex"] }), signature);
+  assert.notEqual(getRecipeExecutionSignature({ ...base, outputQty: 2 }), signature);
+  assert.notEqual(getRecipeExecutionSignature({
+    ...base,
+    materialGroups: [{ alternatives: [{ name: "Iron", qty: 3, type: "Basic" }] }]
+  }), signature);
+  assert.equal(getRecipeExecutionSignature({ ...base, notes: "new note", time: "2 hours" }), signature);
 });
 
 test("runtime Shadowdark item types do not reintroduce legacy NPC Spell", { concurrency: false }, () => {
