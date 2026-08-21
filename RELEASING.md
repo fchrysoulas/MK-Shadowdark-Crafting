@@ -5,8 +5,8 @@ Use this checklist when preparing a published Foundry release.
 ## 1. Version and compatibility
 
 - Update `module.json` `version`.
-- Update the current version in `README.md`.
 - Add the release entry to `CHANGELOG.md`.
+- Keep `README.md` version-agnostic and verify its latest-release installation links remain valid.
 - Confirm Foundry `minimum`, `verified`, and `maximum` values.
 - Confirm the Shadowdark system minimum and current 4.x compatibility.
 
@@ -15,7 +15,7 @@ Use this checklist when preparing a published Foundry release.
 Run the automated integrity suite:
 
 ```bash
-node --experimental-default-type=module --test tests/*.test.js
+node --test tests/*.test.js
 ```
 
 Then perform the module's manual Foundry regression pass on supported Foundry versions before publishing.
@@ -46,20 +46,18 @@ Do not package the repository itself as an extra parent directory inside the ZIP
 "url": "https://github.com/fchrysoulas/MK-Shadowdark-Crafting"
 ```
 
-Until a stable packaged release asset exists, `manifest` and `download` remain intentionally blank.
-
-Once releases consistently publish `module.json` and `module.zip`, use stable URLs such as:
+The source `module.json` keeps `manifest` and `download` blank. The release packaging process injects stable URLs into the published `module.json` asset:
 
 ```json
 "manifest": "https://github.com/fchrysoulas/MK-Shadowdark-Crafting/releases/latest/download/module.json",
-"download": "https://github.com/fchrysoulas/MK-Shadowdark-Crafting/releases/download/vVERSION/module.zip"
+"download": "https://github.com/fchrysoulas/MK-Shadowdark-Crafting/releases/download/vVERSION/mk-shadowdark-crafting.zip"
 ```
 
-Replace `VERSION` with the exact release tag/version used by the packaging process. Do not publish these fields until those assets actually exist.
+Replace `VERSION` with the exact release tag/version used by the packaging process.
 
 ## 5. Before tagging
 
-- Confirm `module.json`, `README.md`, and `CHANGELOG.md` agree on the version.
+- Confirm `module.json` and `CHANGELOG.md` agree on the version, and `README.md` does not hard-code one.
 - Confirm tests pass.
 - Confirm no GM-only or unrelated third-party metadata is present in recipe output snapshots.
 - Confirm inactive Recipe Books are documented as non-secret client-readable data.
