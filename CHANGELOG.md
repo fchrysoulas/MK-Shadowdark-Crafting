@@ -4,6 +4,8 @@ All notable changes to MK Shadowdark Crafting are documented here.
 
 ## Unreleased
 
+## 0.4.4
+
 - Reject Recipe Book imports with malformed, non-integer, non-finite, unsafe, or out-of-range crafting quantities/costs before any world mutation; valid integer numeric strings remain supported.
 - Revalidate required tools and stations after acquiring the final crafting economy lock so requirements removed during the dialog, roll, or lock wait cannot be bypassed.
 - Made saved output snapshots deterministic: normal recipes now ignore later source-item edits, while an explicit Linked Source mode can intentionally follow the live output UUID; legacy UUID-only recipes keep their compatibility fallback.
@@ -16,6 +18,7 @@ All notable changes to MK Shadowdark Crafting are documented here.
 - Simplified the Crafting header to show `Character Name - Crafting` beside the portrait.
 - Made the character header reflect the active mode and removed the redundant Deconstruct Inventory title and hint.
 - Restricted crafting execution to enabled recipes in active books; crafting now aborts if execution-critical recipe data changes before inventory mutation.
+- Contained post-commit chat-card failures so completed crafting and deconstruction transactions remain successful while clearly warning the user that chat reporting failed.
 
 ## 0.4.3
 
