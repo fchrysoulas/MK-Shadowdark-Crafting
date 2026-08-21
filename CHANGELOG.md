@@ -4,6 +4,7 @@ All notable changes to MK Shadowdark Crafting are documented here.
 
 ## Unreleased
 
+- Reject Recipe Book imports with malformed, non-integer, non-finite, unsafe, or out-of-range crafting quantities/costs before any world mutation; valid integer numeric strings remain supported.
 - Revalidate required tools and stations after acquiring the final crafting economy lock so requirements removed during the dialog, roll, or lock wait cannot be bypassed.
 - Made saved output snapshots deterministic: normal recipes now ignore later source-item edits, while an explicit Linked Source mode can intentionally follow the live output UUID; legacy UUID-only recipes keep their compatibility fallback.
 - Keep at most one Crafting window per actor, so switching between actors and reopening an already-open actor reuses the existing ApplicationV2 window instead of creating duplicates.
