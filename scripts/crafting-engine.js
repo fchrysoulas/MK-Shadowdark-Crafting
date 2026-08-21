@@ -8,22 +8,12 @@ import { ResourceTransaction } from "./resource-transaction.js";
 import { postCraftingChatCard, postCraftingChatCardSafely } from "./chat.js";
 import { showDiceSoNiceRoll } from "./dice-so-nice.js";
 import { dialogValue, DialogV2 } from "./application-v2.js";
+import { getCraftingOutcome, getOutcomeConsumeQty } from "./crafting-outcome.js";
 
 function getD20Result(roll) {
   const d20 = roll.dice?.find((die) => die.faces === 20);
   const result = d20?.results?.find((entry) => !entry.discarded && !entry.rerolled);
   return Number(result?.result ?? 0);
-}
-
-function getOutcome({ rollTotal, dc, d20 }) {
-  const criticalSuccess = d20 === 20;
-  const criticalFailure = d20 === 1;
-  const success = criticalSuccess || (!criticalFailure && rollTotal >= dc);
-
-  if (criticalSuccess) return "criticalSuccess";
-  if (criticalFailure) return "criticalFailure";
-  if (success) return "success";
-  return "failure";
 }
 
 function getOutcomeLabel(outcome) {
@@ -37,19 +27,11 @@ function getOutcomeLabel(outcome) {
 }
 
 function getConsumeQty(baseQty, outcome) {
-  const qty = Math.max(0, Number(baseQty) || 0);
-
-  if (outcome === "criticalSuccess" && setting("criticalSuccessHalfCost")) {
-    return Math.ceil(qty / 2);
-  }
-
-  if (outcome === "success" || outcome === "criticalSuccess") return qty;
-
-  if (!setting("consumeMaterialsOnFailure")) return 0;
-
-  if (outcome === "criticalFailure" && setting("criticalFailureLosesAll")) return qty;
-
-  return Math.ceil(qty / 2);
+  return getOutcomeConsumeQty(baseQty, outcome, {
+    criticalSuccessHalfCost: setting("criticalSuccessHalfCost"),
+    consumeMaterialsOnFailure: setting("consumeMaterialsOnFailure"),
+    criticalFailureLosesAll: setting("criticalFailureLosesAll")
+  });
 }
 
 function getCraftedConsumedMaterials(consumed = []) {
@@ -277,7 +259,7 @@ export class CraftingEngine {
     const roll = await new Roll(getRollFormula(rollMode), { mod }).evaluate();
     void showDiceSoNiceRoll(roll, actor);
     const d20 = getD20Result(roll);
-    const outcome = getOutcome({ rollTotal: roll.total, dc: recipe.dc, d20 });
+    const outcome = getCraftingOutcome({ rollTotal: roll.total, dc: recipe.dc, d20 });
     const rollSuccess = outcome === "success" || outcome === "criticalSuccess";
 
     const consumed = [];

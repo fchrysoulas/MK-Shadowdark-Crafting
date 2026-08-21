@@ -125,6 +125,29 @@ test("partial material mutation failure rolls earlier changes back", async () =>
   assert.equal(second.system.quantity, 5);
 });
 
+test("rollback restores both material and gold after a later transaction failure", async () => {
+  const iron = makeItem("iron", 5);
+  const actor = makeActor([iron]);
+  const transaction = new ResourceTransaction([actor]);
+  const allocations = [{
+    actorId: actor.uuid,
+    itemId: iron.id,
+    qty: 2,
+    material: { name: "Iron" }
+  }];
+
+  assert.equal((await transaction.consumeMaterialAllocations(allocations)).ok, true);
+  assert.equal((await transaction.consumeGold(4)).ok, true);
+  assert.equal(iron.system.quantity, 3);
+  assert.equal(actor.system.coins.gp, 6);
+
+  const rollback = await transaction.rollback();
+
+  assert.equal(rollback.ok, true);
+  assert.equal(iron.system.quantity, 5);
+  assert.equal(actor.system.coins.gp, 10);
+});
+
 test("concurrent transactions cannot both spend the same material quantity", async () => {
   const iron = makeItem("iron", 5);
   const actor = makeActor([iron]);

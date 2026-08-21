@@ -4,12 +4,14 @@ on:
   push:
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   test:
+    name: Crafting integrity
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
