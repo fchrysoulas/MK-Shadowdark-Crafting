@@ -8,7 +8,30 @@ MK Shadowdark Crafting stores recipes in **Recipe Books** saved to world setting
 
 - Foundry VTT: **v13-v14**
 - Shadowdark RPG: **3.5.0 or later**, including current 4.x releases
-- Current module version: **0.4.4**
+
+## Installation
+
+### Install from the manifest
+
+1. Open Foundry VTT's **Setup** screen and select **Add-on Modules**.
+2. Click **Install Module**.
+3. Paste this URL into **Manifest URL**:
+
+   ```text
+   https://github.com/fchrysoulas/MK-Shadowdark-Crafting/releases/latest/download/module.json
+   ```
+
+4. Click **Install**.
+5. Open your world, select **Manage Modules**, enable **MK Shadowdark Crafting**, and save the module settings.
+
+Foundry can update a manifest-installed copy from the **Add-on Modules** screen when a newer release is available.
+
+### Install manually
+
+1. Download `mk-shadowdark-crafting.zip` from the [latest GitHub release](https://github.com/fchrysoulas/MK-Shadowdark-Crafting/releases/latest).
+2. Extract it into your Foundry user-data `Data/modules/mk-shadowdark-crafting` directory.
+3. Confirm that `module.json`, `scripts/`, `styles/`, `templates/`, and `lang/` are directly inside that directory, without an extra nested folder.
+4. Restart Foundry VTT, then enable **MK Shadowdark Crafting** from your world's **Manage Modules** dialog.
 
 ## Features
 
@@ -165,12 +188,6 @@ window.mkShadowdarkCrafting.craft(actor, recipeId);
 window.mkShadowdarkCrafting.deconstruct(actor, item);
 window.mkShadowdarkCrafting.recipeBooks.openManager();
 ```
-
-## Installation / Release Metadata
-
-The repository URL is recorded in `module.json`.
-
-`manifest` and `download` remain intentionally blank while this repository does not publish a packaged Foundry release asset. They should only be populated when a release workflow or manual release process produces stable `module.json` and module ZIP URLs. See [RELEASING.md](RELEASING.md).
 
 ## Changelog
 

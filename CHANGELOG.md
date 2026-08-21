@@ -5,7 +5,8 @@ All notable changes to MK Shadowdark Crafting are documented here.
 ## Unreleased
 
 - Fixed crafting chat cards so consumed gold displays its exact quantity, using the same consumed-entry field as materials.
-- Completed the crafting-economy regression matrix and named the GitHub Actions integrity check so it can be enforced as a stable merge gate.
+- Completed the crafting-economy regression matrix and established the local syntax and regression suites as the repository's merge validation; hosted GitHub Actions workflows are intentionally not used.
+- Replaced the hard-coded README version and obsolete release-metadata note with manifest and manual Foundry installation instructions.
 
 ## 0.4.4
 

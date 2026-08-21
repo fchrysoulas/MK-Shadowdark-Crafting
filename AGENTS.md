@@ -145,25 +145,27 @@ Key invariants:
 2. **Atomicity:** internal failures leave inventory/currency in the pre-operation state.
 3. **Conservation:** deconstruction cannot create net resources beyond the configured refund pool.
 
-## Pull Requests and CI Processing
+## Pull Requests and Local Validation
 
-When the user asks to proceed with repository issues or an implementation queue, treat the corresponding pull-request and CI workflow as part of completing that work unless the user explicitly asks to stop before merge.
+This repository intentionally does **not** use GitHub Actions or other hosted CI workflows.
 
-- Open a PR when one is required to trigger, expose, or inspect CI/check jobs.
-- Inspect the PR's checks and workflow jobs rather than stopping after branch commits.
-- If a required job fails, inspect the failure, fix the branch, and re-run or allow the updated PR to re-run the checks.
-- Merge the PR once the requested work is complete and the required checks are successful, unless there is a review blocker or the user explicitly asks to leave it unmerged.
-- After merge, verify the merge state and update/close the related issues when their acceptance criteria are actually satisfied.
-- Do not claim that CI passed when GitHub does not expose a successful check/run result.
-- Keep unrelated work in separate branches/PRs when it would make review or rollback harder.
+- Do not add files under `.github/workflows/`.
+- Do not configure or require hosted status checks as merge gates.
+- Do not wait for GitHub Actions or claim that hosted CI ran.
+- Run the relevant targeted tests and the complete local regression suite before merging implementation work.
+- Check runtime JavaScript syntax locally when scripts change.
+- Open a PR when it helps review, issue tracking, or rollback; a PR is not required merely to trigger automation.
+- Merge the PR once the requested work is complete, local validation succeeds, and there is no review blocker, unless the user explicitly asks to leave it unmerged.
+- After merge, verify the merge state and update or close related issues only when their current acceptance criteria are satisfied.
+- Keep unrelated work in separate branches or PRs when combining it would make review or rollback harder.
 
-This is standing repository-level authorization from the project owner to open and merge PRs as needed for processing requested issue work and CI. It does not authorize unrelated repository changes or bypass explicit stop/review instructions from the user.
+This is standing repository-level authorization from the project owner to open and merge PRs as needed for requested issue work after local validation. It does not authorize unrelated repository changes or bypass explicit stop or review instructions from the user.
 
 ## Release and Versioning
 
 When preparing a release:
 
-- Keep `module.json`, `README.md`, and `CHANGELOG.md` version information synchronized.
+- Keep `module.json` and `CHANGELOG.md` version information synchronized. Do not hard-code the current module version in `README.md`.
 - Verify Foundry compatibility declarations are accurate.
 - Verify Shadowdark compatibility against the currently supported system version.
 - Keep manifest repository/release URLs correct when distributing through GitHub/Foundry.
