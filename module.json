@@ -2,7 +2,7 @@
   "id": "mk-shadowdark-crafting",
   "title": "MK Shadowdark Crafting",
   "description": "A lightweight crafting and downtime module for Shadowdark RPG. Stores recipe books in world settings and creates real items only when crafted.",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "compatibility": {
     "minimum": "13",
     "verified": "14",
