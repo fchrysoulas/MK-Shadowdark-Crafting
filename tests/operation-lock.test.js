@@ -28,6 +28,7 @@ globalThis.foundry = {
 const {
   OperationCoordinatorQueue,
   clearOperationLeaseState,
+  expireOperationLeaseState,
   getOperationCoordinatorId,
   getPersistedOperationLeaseState,
   hashOperationLeaseToken,
@@ -154,6 +155,27 @@ test("persisted lease survives coordinator failover without exposing its release
   assert.equal(await clearOperationLeaseState("old-request", "wrong-token"), false);
   assert.equal(getPersistedOperationLeaseState().requestId, "old-request");
   assert.equal(await clearOperationLeaseState("old-request", oldToken), true);
+  assert.equal(getPersistedOperationLeaseState(), null);
+});
+
+test("a stale coordinator expiry cannot clear a lease renewed past the old deadline", async () => {
+  store.operationLockState = {};
+  gm1.active = true;
+  gm2.active = false;
+  game.user = gm1;
+
+  const token = "renewed-private-token";
+  await reserveOperationLeaseState({
+    requestId: "renewed-request",
+    leaseToken: token,
+    expiresAt: Date.now() + 60_000
+  });
+
+  assert.equal(await expireOperationLeaseState("renewed-request", token), false);
+  assert.equal(getPersistedOperationLeaseState().requestId, "renewed-request");
+
+  store.operationLockState.expiresAt = Date.now() - 1;
+  assert.equal(await expireOperationLeaseState("renewed-request", token), true);
   assert.equal(getPersistedOperationLeaseState(), null);
 });
 
