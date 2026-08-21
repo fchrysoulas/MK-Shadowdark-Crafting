@@ -4,6 +4,7 @@ All notable changes to MK Shadowdark Crafting are documented here.
 
 ## Unreleased
 
+- Made saved output snapshots deterministic: normal recipes now ignore later source-item edits, while an explicit Linked Source mode can intentionally follow the live output UUID; legacy UUID-only recipes keep their compatibility fallback.
 - Keep at most one Crafting window per actor, so switching between actors and reopening an already-open actor reuses the existing ApplicationV2 window instead of creating duplicates.
 - Hardened crafting/deconstruction economy serialization across coordinator failover using targeted Foundry user queries, renewable private lease tokens, and a hashed persistent lease record.
 - Restyled the crafting, recipe editor, recipe book, dialog, and chat interfaces with a consistent high-contrast palette and Montserrat typography.
