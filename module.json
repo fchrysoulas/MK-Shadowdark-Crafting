@@ -8,6 +8,31 @@
     "verified": "14",
     "maximum": "14"
   },
+  "flags": {
+    "mk-module-hub": {
+      "schemaVersion": 1,
+      "category": "game-mechanics",
+      "status": "beta",
+      "icon": "fa-solid fa-hammer",
+      "summary": "A lightweight crafting and downtime module for Shadowdark RPG. Stores recipe books in world settings and creates real items only when crafted.",
+      "tags": [
+        "Shadowdark",
+        "Crafting",
+        "Recipes",
+        "Downtime",
+        "Items"
+      ],
+      "features": [
+        "Crafting Panel from token controls, actor sheets, or macros",
+        "Recipe Books stored in world settings",
+        "GM recipe editor with crafting requirements",
+        "Ability checks with advantage and disadvantage",
+        "Search, sorting, Dense List, and Master Detail layouts",
+        "Material consumption and deconstruction",
+        "Output item creation from saved recipes"
+      ]
+    }
+  },
   "authors": [
     {
       "name": "Mikrokouneli",
